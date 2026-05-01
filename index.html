@@ -52,6 +52,7 @@ body{background:var(--bg);color:var(--text);font-family:'Sora',sans-serif;min-he
 .btn-primary:active{transform:translateY(0)}
 .btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text);border-radius:12px;padding:10px 22px;font-weight:500;cursor:pointer;transition:all .2s;font-family:'Sora',sans-serif;font-size:14px}
 .btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+.active-filter{border-color:var(--accent)!important;color:var(--accent)!important;background:var(--glow)!important}
 .btn-danger{background:transparent;border:1px solid var(--red);color:var(--red);border-radius:12px;padding:10px 22px;font-weight:500;cursor:pointer;font-family:'Sora',sans-serif;font-size:14px}
 .btn-danger:hover{background:rgba(239,68,68,.1)}
 .btn-vote{background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:opacity .2s;font-family:'Sora',sans-serif;display:flex;align-items:center;gap:5px}
@@ -114,12 +115,37 @@ label{font-size:13px;color:var(--muted);font-weight:500;margin-bottom:5px;displa
 .premium-badge{background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700}
 .admin-badge{background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700}
 
-/* Toast */
-#toast-container{position:fixed;bottom:24px;right:24px;z-index:200;display:flex;flex-direction:column;gap:8px}
-.toast{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.4);animation:slideUp .2s ease;max-width:300px}
-.toast.success{border-color:var(--green);color:var(--green)}
-.toast.error{border-color:var(--red);color:var(--red)}
-.toast.info{border-color:var(--accent);color:var(--accent)}
+/* Toast — X/Twitter style */
+#toast-container{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:none;}
+.toast{
+  background:#1a1a1a;
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:9999px;
+  padding:12px 20px 12px 14px;
+  font-size:14px;
+  font-weight:500;
+  color:#fff;
+  box-shadow:0 4px 24px rgba(0,0,0,.7);
+  display:flex;align-items:center;gap:10px;
+  white-space:nowrap;
+  pointer-events:auto;
+  position:relative;
+  overflow:hidden;
+  animation:toastIn .22s cubic-bezier(0.34,1.56,0.64,1) forwards;
+  min-width:160px;
+  max-width:380px;
+}
+.toast.leaving{animation:toastOut .18s ease-in forwards;}
+.toast-icon{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px;}
+.toast.success .toast-icon{background:var(--green);}
+.toast.error   .toast-icon{background:var(--red);}
+.toast.info    .toast-icon{background:var(--accent);}
+.toast.vote-cast .toast-icon{background:var(--accent);}
+.toast.vote-cast{border-color:rgba(99,102,241,0.35);}
+.toast-bar{position:absolute;bottom:0;left:0;height:2px;background:rgba(255,255,255,0.25);animation:toastBar var(--dur,3s) linear forwards;}
+@keyframes toastIn{from{opacity:0;transform:translateY(-14px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes toastOut{from{opacity:1;transform:translateY(0) scale(1)}to{opacity:0;transform:translateY(-10px) scale(.96)}}
+@keyframes toastBar{from{width:100%}to{width:0%}}
 
 /* Court */
 .court-case{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:12px}
@@ -199,6 +225,7 @@ const OMH = {
   users: [],
   posts: [],
   courtCases: [],
+  notifications: [],
   currentPage: 'feed',
   currentTab: 'for-you',
   searchQuery: '',
@@ -208,6 +235,7 @@ const OMH = {
     localStorage.setItem('omh_users', JSON.stringify(this.users));
     localStorage.setItem('omh_posts', JSON.stringify(this.posts));
     localStorage.setItem('omh_court', JSON.stringify(this.courtCases));
+    localStorage.setItem('omh_notifs', JSON.stringify(this.notifications));
     // Update current user ref in users array
     if (this.currentUser) {
       const idx = this.users.findIndex(u => u.username === this.currentUser.username);
@@ -220,6 +248,7 @@ const OMH = {
     this.users = JSON.parse(localStorage.getItem('omh_users') || '[]');
     this.posts = JSON.parse(localStorage.getItem('omh_posts') || '[]');
     this.courtCases = JSON.parse(localStorage.getItem('omh_court') || '[]');
+    this.notifications = JSON.parse(localStorage.getItem('omh_notifs') || '[]');
     const sess = localStorage.getItem('omh_session');
     if (sess) {
       const saved = JSON.parse(sess);
@@ -288,6 +317,7 @@ const OMH = {
       post.likes = post.likes.filter(u => u !== uid);
     } else {
       post.likes.push(uid);
+      this.pushNotification(post.author, 'like', uid, postId);
     }
     this.save();
     renderFeed();
@@ -314,34 +344,61 @@ const OMH = {
       toast('You are not in the eligible region for this vote.', 'error');
       return;
     }
+    const label = post.vote.options[optionIdx]?.label || '';
     post.vote.options.forEach(o => { o.voters = o.voters.filter(v => v !== uid); });
     post.vote.options[optionIdx].voters.push(uid);
     this.save();
     renderFeed();
-    toast('✓ Vote recorded!', 'success');
+    if (OMH.currentPage === 'votes') renderVotesPage();
+    toast('Vote cast: ' + label, 'vote-cast', 3000);
+  },
+
+  // Dynamic court quorum: scales with user count, min 5, max 51
+  courtQuorum() {
+    const n = this.users.length;
+    // sqrt scaling: small communities need fewer votes, large ones more
+    return Math.min(51, Math.max(5, Math.round(Math.sqrt(n) * 1.5)));
   },
 
   flagPost(postId) {
     const post = this.posts.find(p => p.id === postId);
     if (!post || !this.currentUser) return;
-    if (!this.currentUser.isPremium && !this.currentUser.isAdmin) {
-      toast('Community Court flagging requires Premium.', 'error');
+    // Can't flag own posts
+    if (post.author === this.currentUser.username && !this.currentUser.isAdmin) {
+      toast('You cannot flag your own post.', 'error');
       return;
     }
-    if (this.courtCases.find(c => c.postId === postId && c.status === 'open')) {
-      toast('Already in Community Court.', 'info');
-      return;
+    // Prevent re-flagging: block if any case (open OR resolved) exists within 30 days
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const existingCase = this.courtCases.find(c => c.postId === postId);
+    if (existingCase) {
+      if (existingCase.status === 'open') {
+        toast('Already in Community Court.', 'info');
+        return;
+      }
+      if (existingCase.status === 'kept' && existingCase.openedAt > thirtyDaysAgo) {
+        toast('This post was reviewed and kept within the last 30 days. Cannot re-flag yet.', 'info');
+        return;
+      }
+      if (existingCase.status === 'removed') {
+        toast('This post was already removed by Community Court.', 'info');
+        return;
+      }
     }
+    const quorum = this.courtQuorum();
     const case_ = {
       id: 'case-' + Date.now(),
       postId,
       postContent: post.content,
       postAuthor: post.author,
+      postCountry: post.country || '',
+      postState: post.state || '',
       openedBy: this.currentUser.username,
       openedAt: new Date().toISOString(),
       keepVotes: [],
       removeVotes: [],
-      status: 'open'
+      status: 'open',
+      quorum
     };
     this.courtCases.unshift(case_);
     this.save();
@@ -352,26 +409,46 @@ const OMH = {
   courtVote(caseId, verdict) {
     const case_ = this.courtCases.find(c => c.id === caseId);
     if (!case_ || case_.status !== 'open' || !this.currentUser) return;
-    const uid = this.currentUser.username;
-    case_.keepVotes   = case_.keepVotes.filter(u => u !== uid);
-    case_.removeVotes = case_.removeVotes.filter(u => u !== uid);
+    const u = this.currentUser;
+
+    // Region lock: voter must match post's country/state
+    if (case_.postState && u.state && case_.postState !== u.state) {
+      toast('Only residents of ' + case_.postState + ' can vote on this case.', 'error');
+      return;
+    } else if (case_.postCountry && u.country && !case_.postState && case_.postCountry !== u.country) {
+      toast('Only residents of ' + case_.postCountry + ' can vote on this case.', 'error');
+      return;
+    }
+
+    const uid = u.username;
+    case_.keepVotes   = case_.keepVotes.filter(x => x !== uid);
+    case_.removeVotes = case_.removeVotes.filter(x => x !== uid);
     if (verdict === 'keep')   case_.keepVotes.push(uid);
     if (verdict === 'remove') case_.removeVotes.push(uid);
+
+    const quorum = case_.quorum || this.courtQuorum();
     const total = case_.keepVotes.length + case_.removeVotes.length;
-    if (total >= 21) {
+    if (total >= quorum) {
       if (case_.removeVotes.length / total >= 0.75) {
         case_.status = 'removed';
         const post = this.posts.find(p => p.id === case_.postId);
-        if (post) { post.removed = true; }
-        toast('Community Court: Post removed (75% threshold reached).', 'info');
+        if (post) post.removed = true;
+        this.save();
+        renderCourtPage();
+        renderFeed();
+        toast('Community Court: Post removed by jury verdict.', 'info');
+        return;
       } else if (case_.keepVotes.length / total >= 0.75) {
         case_.status = 'kept';
-        toast('Community Court: Post kept (75% threshold reached).', 'info');
+        this.save();
+        renderCourtPage();
+        toast('Community Court: Post cleared — jury voted to keep.', 'info');
+        return;
       }
     }
     this.save();
     renderCourtPage();
-    toast('Court vote recorded.', 'success');
+    toast('Vote cast — ' + (verdict === 'keep' ? 'Keep' : 'Remove'), 'vote-cast', 3000);
   },
 
   searchPosts(q) {
@@ -391,6 +468,91 @@ const OMH = {
       p.vote &&
       new Date(p.timestamp) > thirtyDaysAgo
     ).length;
+  },
+
+  bookmarkPost(postId) {
+    if (!this.currentUser) return;
+    const u = this.currentUser;
+    if (!u.bookmarks) u.bookmarks = [];
+    const idx = u.bookmarks.indexOf(postId);
+    if (idx > -1) u.bookmarks.splice(idx, 1);
+    else u.bookmarks.push(postId);
+    this.save();
+    renderFeed();
+    if (this.currentPage === 'bookmarks') renderBookmarksPage();
+    toast(idx > -1 ? 'Bookmark removed.' : 'Post bookmarked.', 'success', 2500);
+  },
+
+  repostPost(postId) {
+    if (!this.currentUser) return;
+    const original = this.posts.find(p => p.id === postId);
+    if (!original) return;
+    const uid = this.currentUser.username;
+    if (!original.reposts) original.reposts = [];
+    if (original.reposts.includes(uid)) {
+      // un-repost
+      original.reposts = original.reposts.filter(u => u !== uid);
+      this.posts = this.posts.filter(p => !(p.isRepost && p.repostOf === postId && p.author === uid));
+      this.save(); renderFeed();
+      toast('Repost removed.', 'info', 2000);
+      return;
+    }
+    original.reposts.push(uid);
+    const repost = {
+      id: 'rp-' + Date.now(),
+      author: uid,
+      authorName: this.currentUser.fullName,
+      content: original.content,
+      image: original.image || null,
+      vote: original.vote || null,
+      tags: original.tags || [],
+      likes: [], replies: [],
+      reposts: [],
+      timestamp: new Date().toISOString(),
+      editedAt: null,
+      city: this.currentUser.city,
+      state: this.currentUser.state,
+      country: this.currentUser.country,
+      removed: false,
+      isRepost: true,
+      repostOf: postId,
+      repostAuthor: original.authorName,
+      repostAuthorHandle: original.author
+    };
+    this.posts.unshift(repost);
+    this.pushNotification(original.author, 'repost', uid, postId);
+    this.save(); renderFeed();
+    toast('Reposted!', 'success', 2500);
+  },
+
+  recordView(postId) {
+    const post = this.posts.find(p => p.id === postId);
+    if (!post) return;
+    if (!post.views) post.views = 0;
+    post.views++;
+    this.save();
+  },
+
+  pushNotification(toUser, type, fromUser, postId) {
+    if (toUser === fromUser) return; // no self-notifs
+    this.notifications.unshift({
+      id: 'n-' + Date.now(),
+      to: toUser,
+      type, // 'like','reply','repost','quote','flag'
+      from: fromUser,
+      postId,
+      timestamp: new Date().toISOString(),
+      read: false
+    });
+    // keep last 100
+    if (this.notifications.length > 100) this.notifications = this.notifications.slice(0, 100);
+    this.save();
+    renderNotifBadge();
+  },
+
+  unreadNotifCount() {
+    if (!this.currentUser) return 0;
+    return this.notifications.filter(n => n.to === this.currentUser.username && !n.read).length;
   }
 };
 
@@ -535,6 +697,15 @@ if (OMH.users.length === 0) {
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>
         Near Me
       </div>
+      <div class="nav-item" data-page="notifications" onclick="navigate('notifications')" style="position:relative;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        Notifications
+        <span id="notif-badge" style="display:none;background:var(--red);color:#fff;font-size:10px;font-weight:700;border-radius:9999px;padding:1px 6px;margin-left:auto;"></span>
+      </div>
+      <div class="nav-item" data-page="bookmarks" onclick="navigate('bookmarks')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+        Bookmarks
+      </div>
       <div class="nav-item" data-page="votes" onclick="navigate('votes')">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
         GeoVotes
@@ -602,7 +773,7 @@ if (OMH.users.length === 0) {
               <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;border-top:1px solid var(--border);padding-top:10px;">
                 <div style="display:flex;gap:4px;">
                   <label style="cursor:pointer;color:var(--accent);margin:0;" title="Add image">
-                    <input type="file" id="img-upload" accept="image/*" style="display:none;" onchange="previewImage(event)" />
+                    <input type="file" id="img-upload" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none;" onchange="previewImage(event)" />
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                   </label>
                   <button onclick="addHashtagToCompose()" style="background:none;border:none;cursor:pointer;color:var(--accent);">
@@ -664,12 +835,67 @@ if (OMH.users.length === 0) {
           <input class="search-input" placeholder="Search topics, people, votes…" oninput="handleSearch(this.value);navigate('feed')" style="width:100%;" />
         </div>
       </div>
-      <div style="padding:16px 20px;">
+
+      <!-- Region Browse -->
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div style="font-size:15px;font-weight:700;">📍 Browse by Region</div>
+          <button onclick="showCreateRegionUI()" class="btn-ghost" style="font-size:12px;padding:5px 12px;">+ Save Region</button>
+        </div>
+
+        <!-- Active region filter chips -->
+        <div id="explore-region-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"></div>
+
+        <!-- Quick add ad-hoc region filter -->
+        <div style="display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;">
+          <select id="explore-region-type" class="input-field" style="font-size:13px;padding:7px 10px;">
+            <option value="city">City</option>
+            <option value="state" selected>State/Province</option>
+            <option value="country">Country</option>
+          </select>
+          <input id="explore-region-value" class="input-field" placeholder="e.g. Saskatchewan" style="font-size:13px;" onkeydown="if(event.key==='Enter')addExploreRegion()" />
+          <button onclick="addExploreRegion()" class="btn-ghost" style="font-size:12px;padding:7px 12px;white-space:nowrap;">Add</button>
+        </div>
+
+        <!-- Saved regions -->
+        <div id="saved-regions-list" style="margin-top:12px;"></div>
+
+        <!-- Create/edit saved region UI -->
+        <div id="create-region-ui" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:10px;">
+          <div style="font-size:14px;font-weight:700;margin-bottom:10px;">Save a Region Collection</div>
+          <input id="new-region-name" class="input-field" placeholder='Name (e.g. "Rural Alberta")' style="margin-bottom:8px;" />
+          <div id="new-region-zones" style="display:flex;flex-wrap:wrap;gap:6px;min-height:28px;margin-bottom:8px;"></div>
+          <div style="display:grid;grid-template-columns:auto 1fr auto;gap:8px;margin-bottom:10px;">
+            <select id="new-zone-type" class="input-field" style="font-size:13px;padding:7px 10px;">
+              <option value="city">City</option>
+              <option value="state" selected>State/Province</option>
+              <option value="country">Country</option>
+              <option value="global">Global</option>
+            </select>
+            <input id="new-zone-value" class="input-field" placeholder="e.g. Manitoba" style="font-size:13px;" onkeydown="if(event.key==='Enter')addZoneToNew()" />
+            <button onclick="addZoneToNew()" class="btn-ghost" style="font-size:12px;padding:7px 10px;">Add</button>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button onclick="saveNewRegion()" class="btn-primary" style="font-size:13px;padding:8px 16px;">Save Region</button>
+            <button onclick="document.getElementById('create-region-ui').style.display='none'" class="btn-ghost" style="font-size:13px;padding:8px 16px;">Cancel</button>
+          </div>
+        </div>
+
+        <!-- Browse mode toggle -->
+        <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;" id="explore-filter-bar">
+          <button onclick="setExploreMode('posts')" id="exp-btn-posts" class="btn-ghost active-filter" style="font-size:12px;padding:5px 14px;">Posts</button>
+          <button onclick="setExploreMode('votes')" id="exp-btn-votes" class="btn-ghost" style="font-size:12px;padding:5px 14px;">Votes</button>
+          <button onclick="setExploreMode('trending')" id="exp-btn-trending" class="btn-ghost" style="font-size:12px;padding:5px 14px;">Trending</button>
+        </div>
+      </div>
+
+      <div id="explore-region-results" style="padding:0;"></div>
+
+      <!-- Trending fallback (shown in trending mode) -->
+      <div id="explore-trending-section" style="display:none;padding:16px 20px;">
         <div class="section-title" style="margin-bottom:12px;">Trending Topics</div>
         <div id="trending-list"></div>
-      </div>
-      <div style="padding:0 20px 20px;">
-        <div class="early-notice">
+        <div style="margin-top:16px;" class="early-notice">
           <strong style="color:var(--text);">🔭 Honest Trending Algorithm</strong><br>
           Sorted purely by: post count + vote participants in last 24 hours. No weighting. No promoted content. Same for everyone. <span class="link" onclick="alert('Formula: (posts_with_tag_24h + vote_participants_24h) / hours_since_last_activity\n\nNo personalization. No promoted content. No black box.')">See formula</span>
         </div>
@@ -701,6 +927,21 @@ if (OMH.users.length === 0) {
         <div style="font-size:18px;font-weight:700;">Settings</div>
       </div>
       <div id="settings-content" style="padding:20px;"></div>
+    </div>
+
+    <div id="page-notifications" class="page">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+        <div style="font-size:18px;font-weight:700;">Notifications</div>
+        <button onclick="markAllNotifsRead()" style="background:none;border:none;cursor:pointer;color:var(--accent);font-size:13px;font-family:'Sora',sans-serif;">Mark all read</button>
+      </div>
+      <div id="notif-list" style="padding:0;"></div>
+    </div>
+
+    <div id="page-bookmarks" class="page">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
+        <div style="font-size:18px;font-weight:700;">Bookmarks</div>
+      </div>
+      <div id="bookmarks-list" style="padding:0;"></div>
     </div>
 
   </main>
@@ -741,7 +982,7 @@ if (OMH.users.length === 0) {
       <div><label>Email or Username</label><input class="input-field" id="login-id" type="text" placeholder="you@example.com" /></div>
       <div><label>Password</label><input class="input-field" id="login-pass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()" /></div>
       <button class="btn-primary" onclick="doLogin()" style="width:100%;padding:12px;">Sign In</button>
-      <button class="btn-ghost" onclick="closeModal('modal-login');showModal('signup')" style="width:100%;padding:12px;">Create Account</button>
+      <button class="btn-ghost" onclick="closeModal('login');showModal('signup')" style="width:100%;padding:12px;">Create Account</button>
     </div>
     <div style="text-align:center;margin-top:12px;font-size:12px;color:var(--muted);">Demo: <span class="mono">demo</span> / <span class="mono">demo123</span></div>
     <button data-close="login" class="modal-close-btn">✕</button>
@@ -770,7 +1011,7 @@ if (OMH.users.length === 0) {
         📍 <strong style="color:var(--text);">Location lock:</strong> Your location can only be changed once every 6 months. This prevents gaming of geo-restricted votes. Early version uses self-declared location + GPS corroboration.
       </div>
       <div style="grid-column:1/-1;"><button class="btn-primary" onclick="doSignup()" style="width:100%;padding:12px;">Create Account</button></div>
-      <div style="grid-column:1/-1;text-align:center;"><span style="font-size:12px;color:var(--muted);">Already have an account? </span><span class="link" style="font-size:12px;" onclick="closeModal('modal-signup');showModal('login')">Sign in</span></div>
+      <div style="grid-column:1/-1;text-align:center;"><span style="font-size:12px;color:var(--muted);">Already have an account? </span><span class="link" style="font-size:12px;" onclick="closeModal('signup');showModal('login')">Sign in</span></div>
     </div>
     <button data-close="signup" class="modal-close-btn">✕</button>
   </div>
@@ -818,10 +1059,12 @@ if (OMH.users.length === 0) {
         <button onclick="quickScope('state',currentUserState())" class="btn-ghost" style="font-size:11px;padding:4px 10px;">📍 My State</button>
         <button onclick="quickScope('city',currentUserCity())" class="btn-ghost" style="font-size:11px;padding:4px 10px;">🏙️ My City</button>
       </div>
+      <!-- Saved regions as one-tap scopes -->
+      <div id="v-saved-regions-row" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px;"></div>
       <div id="v-region-tags" style="display:flex;flex-wrap:wrap;gap:6px;min-height:10px;padding:4px 0;"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div>
-          <label>Or add custom region type</label>
+          <label>Add custom area</label>
           <select class="input-field" id="v-region-type">
             <option value="city">City / Town</option>
             <option value="state">State / Province</option>
@@ -831,12 +1074,12 @@ if (OMH.users.length === 0) {
         </div>
         <div>
           <label>Region name</label>
-          <input class="input-field" id="v-region-value" type="text" placeholder="e.g. Texas" />
+          <input class="input-field" id="v-region-value" type="text" placeholder="e.g. Saskatchewan" />
         </div>
       </div>
-      <button class="btn-ghost" onclick="addVoteRegion()" style="font-size:12px;padding:7px;">+ Add This Region</button>
+      <button class="btn-ghost" onclick="addVoteRegion()" style="font-size:12px;padding:7px;">+ Add Area</button>
       <div class="early-notice">
-        ⚡ <strong style="color:var(--text);">Multi-region:</strong> Add multiple regions for combined votes (e.g. several states, NATO countries, rural counties). GPS corroboration happens at vote time.
+        ⚡ <strong style="color:var(--text);">Multi-area voting:</strong> Combine cities, provinces, or countries into one vote scope. Voters must be located in at least one area. Save custom regions in <span class="link" onclick="closeModal('vote');navigate('explore')">Explore → Save Region</span>.
       </div>
       <div id="vote-limit-notice" style="display:none;" class="lock-warning"></div>
       <div style="display:flex;gap:10px;justify-content:flex-end;">
@@ -862,10 +1105,16 @@ if (OMH.users.length === 0) {
       <div style="display:flex;gap:10px;align-items:center;"><span style="color:var(--green);">✓</span><span>⚡ Verified badge on profile and posts</span></div>
       <div style="display:flex;gap:10px;align-items:center;"><span style="color:var(--green);">✓</span><span>Early access to new features</span></div>
     </div>
-    <button class="btn-primary" onclick="activatePremium()" style="width:100%;padding:14px;font-size:15px;">⚡ Activate Verified (Demo)</button>
-    <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6;">Demo activates instantly for testing. Real payments via Stripe coming at launch.</div>
+    <a href="https://buy.stripe.com/6oUdRad0n2x4bJRfiG77O00" target="_blank" rel="noopener" style="display:block;width:100%;text-decoration:none;">
+      <button class="btn-primary" style="width:100%;padding:14px;font-size:15px;">⚡ Subscribe — $8/mo</button>
+    </a>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6;text-align:center;">Secure payment via Stripe · Cancel anytime</div>
+    <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;text-align:center;">
+      <span style="font-size:11px;color:var(--muted);">Testing the platform? </span>
+      <span class="link" style="font-size:11px;" onclick="activatePremium()">Activate demo Verified</span>
+    </div>
     <div style="margin-top:12px;padding:10px;background:var(--surface);border-radius:10px;font-size:11px;color:var(--muted);text-align:left;line-height:1.6;">
-      <strong style="color:var(--text);">💳 Stripe payment info:</strong> When live, payments go directly to your account. Stripe takes 2.9% + 30¢ per transaction. You keep ~$7.47 per $8 subscription.
+      <strong style="color:var(--text);">💳 Stripe payment info:</strong> Payments go directly to your account. Stripe takes 2.9% + 30¢ per transaction. You keep ~$7.47 per $8 subscription.
     </div>
     <button data-close="premium" class="btn-ghost" style="width:100%;padding:12px;margin-top:10px;">Maybe later</button>
     <button data-close="premium" class="modal-close-btn">✕</button>
@@ -942,19 +1191,40 @@ if (OMH.users.length === 0) {
       </div>
     </div>
     <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px;display:flex;align-items:center;justify-content:space-between;">
-      <div style="display:flex;gap:6px;align-items:center;">
-        <label style="cursor:pointer;color:var(--accent);margin:0;" title="Add image">
-          <input type="file" id="compose-modal-file" accept="image/*" style="display:none;" onchange="previewComposeModalImage(event)" />
-          <div style="width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;transition:background .2s;" onmouseover="this.style.background='var(--glow)'" onmouseout="this.style.background='transparent'">
+      <div style="display:flex;gap:2px;align-items:center;">
+        <label style="cursor:pointer;color:var(--accent);margin:0;" title="Photo/GIF/Video (mp4, mov)">
+          <input type="file" id="compose-modal-file" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm" style="display:none;" onchange="previewComposeModalImage(event)" />
+          <div style="width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;transition:background .2s;" onmouseover="this.style.background='var(--glow)'" onmouseout="this.style.background='transparent'" title="Photo/Video">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
           </div>
         </label>
-        <button onclick="openVoteFromCompose()" title="Turn into GeoVote" style="background:none;border:1px solid var(--border);color:var(--text);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Sora',sans-serif;transition:all .2s;display:flex;align-items:center;gap:5px;" onmouseover="this.style.borderColor='var(--green)';this.style.color='var(--green)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)'">
-          🗳️ Add GeoVote
+        <button onclick="openGifPicker()" title="Add GIF" style="width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;color:var(--accent);font-size:11px;font-weight:800;letter-spacing:-.5px;transition:background .2s;" onmouseover="this.style.background='var(--glow)'" onmouseout="this.style.background='transparent'">GIF</button>
+        <button onclick="toggleEmojiPicker()" title="Add emoji" style="width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;font-size:18px;transition:background .2s;" onmouseover="this.style.background='var(--glow)'" onmouseout="this.style.background='transparent'">☺</button>
+        <button onclick="openVoteFromCompose()" title="Add GeoVote" style="background:none;border:1px solid var(--border);color:var(--text);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Sora',sans-serif;transition:all .2s;display:flex;align-items:center;gap:5px;margin-left:4px;" onmouseover="this.style.borderColor='var(--green)';this.style.color='var(--green)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)'">
+          🗳️ GeoVote
         </button>
-        <span id="compose-modal-count" style="font-size:11px;color:var(--muted);">0 / 500</span>
+        <span id="compose-modal-count" style="font-size:11px;color:var(--muted);margin-left:6px;">0 / 500</span>
       </div>
       <button onclick="submitComposeModal()" class="btn-primary" style="padding:9px 22px;font-size:14px;">Post</button>
+    </div>
+    <!-- Emoji picker panel -->
+    <div id="emoji-picker-panel" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px;margin-top:8px;flex-wrap:wrap;gap:4px;max-height:160px;overflow-y:auto;">
+      <div style="font-size:11px;color:var(--muted);width:100%;margin-bottom:6px;">Common</div>
+    </div>
+  </div>
+</div>
+
+<!-- QUOTE MODAL -->
+<div id="modal-quote" class="overlay" style="display:none;" onclick="closeModalOnOverlay(event,'quote')" data-overlay-close="quote">
+  <div class="modal" style="max-width:560px;position:relative;padding:24px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div style="font-size:16px;font-weight:700;">Quote Post</div>
+      <button data-close="quote" class="modal-close-btn" style="position:static;margin:0;">✕</button>
+    </div>
+    <textarea class="input-field" id="quote-text" placeholder="Add your comment…" rows="3" style="font-size:15px;resize:none;margin-bottom:12px;"></textarea>
+    <div id="quote-preview" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:14px;font-size:13px;color:var(--muted);"></div>
+    <div style="display:flex;justify-content:flex-end;">
+      <button onclick="submitQuote()" class="btn-primary" style="padding:9px 22px;">Post</button>
     </div>
   </div>
 </div>
@@ -979,7 +1249,7 @@ function closeModalOnOverlay(e, name) {
 // ESC key + delegated close button handler
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
-    ['login','signup','vote','premium','reply','edit','gps','compose'].forEach(m => {
+    ['login','signup','vote','premium','reply','edit','gps','compose','quote'].forEach(m => {
       const el = document.getElementById('modal-'+m);
       if (el && el.style.display !== 'none') closeModal(m);
     });
@@ -1004,12 +1274,24 @@ document.addEventListener('click', function(e) {
 });
 
 // Toast
-function toast(msg, type='info', duration=3500) {
+function toast(msg, type='info', duration=3200) {
+  const icons = { success:'✓', error:'✕', info:'·', 'vote-cast':'✓' };
   const el = document.createElement('div');
   el.className = `toast ${type}`;
-  el.textContent = msg;
-  document.getElementById('toast-container').appendChild(el);
-  setTimeout(() => el.remove(), duration);
+  el.style.setProperty('--dur', duration+'ms');
+  el.innerHTML = `<div class="toast-icon">${icons[type]||'·'}</div><span style="flex:1;">${msg}</span><div class="toast-bar"></div>`;
+  const container = document.getElementById('toast-container');
+  container.appendChild(el);
+  // Dismiss on click
+  el.addEventListener('click', () => dismiss(el));
+  // Auto dismiss
+  const t = setTimeout(() => dismiss(el), duration);
+  function dismiss(el) {
+    clearTimeout(t);
+    if (el.classList.contains('leaving')) return;
+    el.classList.add('leaving');
+    el.addEventListener('animationend', () => el.remove(), {once:true});
+  }
 }
 
 // Navigation
@@ -1021,12 +1303,14 @@ function navigate(page) {
   document.querySelectorAll('.nav-item').forEach(n => {
     n.classList.toggle('active', n.dataset.page === page);
   });
-  if (page === 'court')    renderCourtPage();
-  if (page === 'votes')    renderVotesPage();
-  if (page === 'profile')  renderProfilePage();
-  if (page === 'explore')  renderExplorePage();
-  if (page === 'nearme')   renderNearMe();
-  if (page === 'settings') renderSettings();
+  if (page === 'court')         renderCourtPage();
+  if (page === 'votes')         renderVotesPage();
+  if (page === 'profile')       renderProfilePage();
+  if (page === 'explore')       renderExplorePage();
+  if (page === 'nearme')        renderNearMe();
+  if (page === 'settings')      renderSettings();
+  if (page === 'notifications') renderNotificationsPage();
+  if (page === 'bookmarks')     renderBookmarksPage();
   if (window.innerWidth <= 720) document.getElementById('sidebar').classList.remove('open');
 }
 
@@ -1069,9 +1353,82 @@ function doLogin() {
   const user = OMH.users.find(u => (u.email===id || u.username===id) && u.password===pass);
   if (!user) { toast('Invalid credentials. Check your username and password.', 'error'); return; }
   OMH.login(user);
-  closeModal('modal-login');
+  closeModal('login');
   toast(`Welcome back, ${user.fullName.split(' ')[0]}! 👋`, 'success');
 }
+
+// ── Anti-abuse: device fingerprint + IP soft limits ─────────────────────────
+function getDeviceFingerprint() {
+  // Build a stable-ish browser fingerprint from passive signals only
+  const nav = navigator;
+  const signals = [
+    nav.userAgent,
+    nav.language,
+    nav.languages ? nav.languages.join(',') : '',
+    nav.hardwareConcurrency || '',
+    nav.deviceMemory || '',
+    screen.width + 'x' + screen.height,
+    screen.colorDepth,
+    new Date().getTimezoneOffset(),
+    nav.platform || ''
+  ].join('|');
+  // Simple non-cryptographic hash (djb2)
+  let hash = 5381;
+  for (let i = 0; i < signals.length; i++) {
+    hash = ((hash << 5) + hash) ^ signals.charCodeAt(i);
+    hash = hash >>> 0; // keep unsigned 32-bit
+  }
+  return hash.toString(36);
+}
+
+const DEVICE_FP = getDeviceFingerprint();
+const FP_LIMIT  = 3; // max accounts per device fingerprint
+const IP_LIMIT  = 3; // max accounts per stored IP token (best-effort)
+
+function checkAbuseSignals() {
+  // --- Device fingerprint check (localStorage-based) ---
+  const fpKey  = 'omh_fp_' + DEVICE_FP;
+  const fpData = JSON.parse(localStorage.getItem(fpKey) || '{"count":0,"accounts":[]}');
+  if (fpData.count >= FP_LIMIT) {
+    // Soft block — warn but don't store yet
+    return {
+      blocked: true,
+      reason: `This device has been used to create ${fpData.count} accounts. To keep votes fair, new registrations from this device are restricted. Contact support if this is a mistake.`
+    };
+  }
+
+  // --- LocalStorage "IP token" check (best-effort; resets if storage cleared) ---
+  // We can't read real IPs from the browser, but we store a lightweight
+  // session-stable key seeded from timezone + language + screen to simulate
+  // rudimentary IP grouping. Real IP checks belong server-side.
+  const ipToken = [
+    new Date().getTimezoneOffset(),
+    navigator.language,
+    screen.width, screen.height
+  ].join('-');
+  const ipKey  = 'omh_ipt_' + btoa(ipToken).replace(/=/g,'').slice(0,12);
+  const ipData = JSON.parse(localStorage.getItem(ipKey) || '{"count":0}');
+  if (ipData.count >= IP_LIMIT) {
+    return {
+      blocked: true,
+      reason: `Multiple accounts have been created from your location. To protect voting integrity, new registrations are temporarily restricted. Contact support if this is a mistake.`
+    };
+  }
+  return { blocked: false, fpKey, fpData, ipKey, ipData };
+}
+
+function recordNewAccount(username) {
+  const r = checkAbuseSignals();
+  if (r.blocked) return; // already blocked; shouldn't reach here
+  // Update fingerprint counter
+  r.fpData.count++;
+  r.fpData.accounts = (r.fpData.accounts || []).concat(username);
+  localStorage.setItem(r.fpKey, JSON.stringify(r.fpData));
+  // Update ip token counter
+  r.ipData.count++;
+  localStorage.setItem(r.ipKey, JSON.stringify(r.ipData));
+}
+// ────────────────────────────────────────────────────────────────────────────
 
 function doSignup() {
   const name     = document.getElementById('su-name').value.trim();
@@ -1090,6 +1447,13 @@ function doSignup() {
   if (OMH.users.find(u => u.username===username)) { toast('Username already taken.', 'error'); return; }
   if (OMH.users.find(u => u.email===email)) { toast('Email already registered.', 'error'); return; }
 
+  // Soft abuse check: device fingerprint + location token
+  const abuseCheck = checkAbuseSignals();
+  if (abuseCheck.blocked) {
+    toast(abuseCheck.reason, 'error');
+    return;
+  }
+
   const user = {
     username, password: pass, fullName: name, email,
     country, state, city,
@@ -1100,8 +1464,9 @@ function doSignup() {
   };
   OMH.users.push(user);
   OMH.save();
+  recordNewAccount(username);
   OMH.login(user);
-  closeModal('modal-signup');
+  closeModal('signup');
   toast(`Welcome to OneMindHub, ${name.split(' ')[0]}! 🎉`, 'success');
 }
 
@@ -1114,7 +1479,7 @@ function activatePremium() {
   if (!OMH.currentUser) { toast('Please sign in first.', 'error'); return; }
   OMH.currentUser.isPremium = true;
   OMH.save();
-  closeModal('modal-premium');
+  closeModal('premium');
   toast('⚡ Verified activated! Enjoy unlimited GeoVotes.', 'success');
   renderSidebar();
   renderProfilePage();
@@ -1172,6 +1537,7 @@ function showVoteModal() {
   });
   renderVoteRegionTags();
   resetVoteModal();
+  renderVoteSavedRegionsRow();
   // Check vote limit
   const limitNotice = document.getElementById('vote-limit-notice');
   if (limitNotice) {
@@ -1179,9 +1545,9 @@ function showVoteModal() {
       const count = OMH.getVoteCount(OMH.currentUser);
       limitNotice.style.display = 'block';
       if (count >= 3) {
-        limitNotice.innerHTML = '⚠️ Vote limit reached (3/month). <button data-close-vote-premium class="link" style="background:none;border:none;cursor:pointer;color:var(--accent);font-family:inherit;font-size:inherit;">Upgrade to Verified →</button>';
+        limitNotice.innerHTML = '⚠️ Limit reached — <span data-close-vote-premium class="link" style="cursor:pointer;color:var(--accent);">Upgrade to Premium</span>';
       } else {
-        limitNotice.innerHTML = 'Free: ' + count + '/3 votes used this month.';
+        limitNotice.innerHTML = count + '/3 free votes used this month.';
       }
     } else {
       limitNotice.style.display = 'none';
@@ -1189,12 +1555,71 @@ function showVoteModal() {
   }
 }
 
+// ── Vote modal helpers ──────────────────────────────────────────────────────
+function resetVoteModal() {
+  const container = document.getElementById('vote-options-container');
+  if (!container) return;
+  container.innerHTML = `
+    <div class="vote-option-input" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <div style="width:24px;height:24px;border-radius:50%;background:var(--glow);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;">1</div>
+      <input type="text" class="input-field" placeholder="Option 1 (e.g. Yes — support)" style="flex:1;" />
+      <button onclick="removeVoteOption(this)" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:18px;padding:0 4px;" title="Remove">✕</button>
+    </div>
+    <div class="vote-option-input" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <div style="width:24px;height:24px;border-radius:50%;background:var(--glow);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;">2</div>
+      <input type="text" class="input-field" placeholder="Option 2 (e.g. No — oppose)" style="flex:1;" />
+      <button onclick="removeVoteOption(this)" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:18px;padding:0 4px;" title="Remove">✕</button>
+    </div>`;
+  renumberVoteOptions();
+  // Also reset region list
+  pendingVoteRegions = [];
+  const rl = document.getElementById('v-region-list');
+  if (rl) rl.innerHTML = '';
+}
+
+function addVoteOptionInput() {
+  const container = document.getElementById('vote-options-container');
+  if (!container) return;
+  const count = container.querySelectorAll('.vote-option-input').length;
+  if (count >= 6) { toast('Maximum 6 options allowed.', 'error'); return; }
+  const num = count + 1;
+  const div = document.createElement('div');
+  div.className = 'vote-option-input';
+  div.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;';
+  div.innerHTML = `
+    <div style="width:24px;height:24px;border-radius:50%;background:var(--glow);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;">${num}</div>
+    <input type="text" class="input-field" placeholder="Option ${num}" style="flex:1;" />
+    <button onclick="removeVoteOption(this)" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:18px;padding:0 4px;" title="Remove">✕</button>`;
+  container.appendChild(div);
+}
+
+function removeVoteOption(btn) {
+  const container = document.getElementById('vote-options-container');
+  if (!container) return;
+  const items = container.querySelectorAll('.vote-option-input');
+  if (items.length <= 2) { toast('At least 2 options are required.', 'error'); return; }
+  btn.closest('.vote-option-input').remove();
+  renumberVoteOptions();
+}
+
+function renumberVoteOptions() {
+  const container = document.getElementById('vote-options-container');
+  if (!container) return;
+  container.querySelectorAll('.vote-option-input').forEach((row, i) => {
+    const badge = row.querySelector('div');
+    if (badge) badge.textContent = i + 1;
+    const inp = row.querySelector('input');
+    if (inp && !inp.value) inp.placeholder = 'Option ' + (i + 1);
+  });
+}
+// ───────────────────────────────────────────────────────────────────────────
+
 function addVoteRegion() {
   const type  = document.getElementById('v-region-type').value;
   const value = document.getElementById('v-region-value').value.trim();
   if (type !== 'global' && !value) { toast('Enter a region value.', 'error'); return; }
   if (!OMH.currentUser.isPremium && !OMH.currentUser.isAdmin && pendingVoteRegions.length >= 1) {
-    toast('Multi-region votes require Verified. Upgrade to add more regions.', 'error');
+    showModal('premium');
     return;
   }
   pendingVoteRegions.push({type, value: type==='global'?'global':value});
@@ -1228,8 +1653,9 @@ function attachVote() {
   }
   const title   = document.getElementById('v-title').value.trim();
   const desc    = document.getElementById('v-desc').value.trim();
-  const optRaw  = document.getElementById('v-options').value.trim();
-  const options = optRaw.split('\n').map(s=>s.trim()).filter(Boolean);
+  // Collect options from dynamic inputs in vote-options-container
+  const optInputs = document.querySelectorAll('#vote-options-container .vote-option-input input[type="text"], #vote-options-container .vote-option-input input:not([type])');
+  const options = Array.from(optInputs).map(el => el.value.trim()).filter(Boolean);
   const hours   = parseInt(document.getElementById('v-duration').value);
 
   if (!title) { toast('Vote question is required.', 'error'); return; }
@@ -1286,7 +1712,7 @@ function initiateVoteWithGPS(postId, optionIdx) {
 }
 
 function confirmGpsVote() {
-  closeModal('modal-gps');
+  closeModal('gps');
   if (!pendingGpsVoteData) return;
   const {postId, optionIdx} = pendingGpsVoteData;
   pendingGpsVoteData = null;
@@ -1296,7 +1722,7 @@ function confirmGpsVote() {
 }
 
 function skipGpsVote() {
-  closeModal('modal-gps');
+  closeModal('gps');
   if (!pendingGpsVoteData) return;
   const {postId, optionIdx} = pendingGpsVoteData;
   pendingGpsVoteData = null;
@@ -1309,7 +1735,7 @@ function skipGpsVote() {
 function submitPost() {
   if (!OMH.currentUser) { showModal('login'); return; }
   const content = document.getElementById('compose-text').value.trim();
-  if (!content && !pendingImage) { toast('Write something first.', 'error'); return; }
+  if (!content && !pendingImage && !pendingVote) { toast('Write something or attach a GeoVote first.', 'error'); return; }
   if (content.length > 500) { toast('Max 500 characters.', 'error'); return; }
 
   const tags = (content.match(/#\w+/g) || []).map(t => t.slice(1));
@@ -1330,16 +1756,19 @@ function submitPost() {
   };
 
   OMH.addPost(post);
-  document.getElementById('compose-text').value = '';
-  document.getElementById('compose-text').style.height = 'auto';
-  document.getElementById('char-count').textContent = '0 / 500';
+
+  // Clear compose field immediately so it feels responsive
+  const ta = document.getElementById('compose-text');
+  if (ta) { ta.value = ''; ta.style.height = 'auto'; }
+  const cc = document.getElementById('char-count');
+  if (cc) cc.textContent = '0 / 500';
   removeImage();
   pendingVote = null;
-  const btn = document.getElementById('make-vote-btn');
-  btn.textContent = '🗳️ GeoVote';
-  btn.removeAttribute('style');
+  const voteBtn = document.getElementById('make-vote-btn');
+  if (voteBtn) { voteBtn.textContent = '🗳️ GeoVote'; voteBtn.removeAttribute('style'); }
+
   renderFeed();
-  toast('Posted! 🚀', 'success');
+  toast('Your post was sent.', 'success', 3000);
 }
 
 function addHashtagToCompose() {
@@ -1363,7 +1792,7 @@ function submitEdit() {
   if (!newContent) { toast('Post cannot be empty.', 'error'); return; }
   if (newContent.length > 500) { toast('Max 500 characters.', 'error'); return; }
   if (OMH.editPost(postId, newContent)) {
-    closeModal('modal-edit');
+    closeModal('edit');
     renderFeed();
     toast('Post updated.', 'success');
   } else {
@@ -1403,10 +1832,11 @@ function submitReply() {
     content: text,
     timestamp: new Date().toISOString()
   });
+  OMH.pushNotification(post.author, 'reply', OMH.currentUser.username, post.id);
   OMH.save();
-  closeModal('modal-reply');
+  closeModal('reply');
   renderFeed();
-  toast('Reply posted.', 'success');
+  setTimeout(() => toast('Reply posted.', 'success', 2500), 60);
 }
 
 // Search
@@ -1485,6 +1915,7 @@ function sharePost(id) {
 
 // Sidebar
 function renderSidebar() {
+  renderNotifBadge();
   const loc = document.getElementById('sidebar-location');
   const userEl = document.getElementById('sidebar-user');
   if (!loc || !userEl) return;
@@ -1508,17 +1939,21 @@ function renderSidebar() {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         </button>
       </div>`;
-    document.getElementById('compose-form').style.display = 'block';
-    document.getElementById('compose-login-prompt').style.display = 'none';
+    const composeForm = document.getElementById('compose-form');
+    const composePrompt = document.getElementById('compose-login-prompt');
+    if (composeForm) composeForm.style.display = 'block';
+    if (composePrompt) composePrompt.style.display = 'none';
     const ca = document.getElementById('compose-avatar');
-    if (u.avatar) {
-      ca.innerHTML = `<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`;
-      ca.style.background = '#111';
-      ca.textContent = '';
-    } else {
-      ca.innerHTML = '';
-      ca.textContent = initials(u.fullName);
-      ca.style.background = avatarColor(u.username);
+    if (ca) {
+      if (u.avatar) {
+        ca.innerHTML = `<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`;
+        ca.style.background = '#111';
+        ca.textContent = '';
+      } else {
+        ca.innerHTML = '';
+        ca.textContent = initials(u.fullName);
+        ca.style.background = avatarColor(u.username);
+      }
     }
   } else {
     loc.innerHTML = '<span style="font-size:11px;">Sign in to see your location</span>';
@@ -1527,18 +1962,31 @@ function renderSidebar() {
         <button class="btn-ghost" onclick="showModal('login')" style="flex:1;padding:9px;font-size:13px;">Sign In</button>
         <button class="btn-primary" onclick="showModal('signup')" style="flex:1;padding:9px;font-size:13px;">Join</button>
       </div>`;
-    document.getElementById('compose-form').style.display = 'none';
-    document.getElementById('compose-login-prompt').style.display = 'block';
+    const composeFormEl = document.getElementById('compose-form');
+    const composePromptEl = document.getElementById('compose-login-prompt');
+    if (composeFormEl) composeFormEl.style.display = 'none';
+    if (composePromptEl) composePromptEl.style.display = 'block';
   }
 }
 
 // Post card
 function renderPost(post) {
   if (post.removed) return '';
+  trackView(post.id);
   const u = OMH.currentUser;
   const liked = u && post.likes.includes(u.username);
   const canFlag = u && (u.isPremium || u.isAdmin);
   const isOwner = u && (post.author === u.username || u.isAdmin);
+  const isFlagged = OMH.courtCases.some(c => c.postId === post.id && c.status === 'open');
+  const bookmarked = u && u.bookmarks && u.bookmarks.includes(post.id);
+  const reposted = u && (post.reposts||[]).includes(u.username);
+
+  // Repost / Quote header banner
+  const repostBanner = post.isRepost ? `<div style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:5px;padding:0 0 6px 0;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg> @${post.repostAuthorHandle} reposted</div>` : '';
+
+  // Quoted post block
+  const quotedBlock = post.isQuote ? `<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-top:8px;font-size:13px;"><div style="font-size:12px;color:var(--muted);margin-bottom:4px;">@${post.quotedHandle}</div><div>${(post.quotedContent||'').slice(0,160)}</div></div>` : '';
+
   const totalVotes = post.vote ? post.vote.options.reduce((s,o)=>s+o.voters.length,0) : 0;
   const userVotedIdx = post.vote && u ? post.vote.options.findIndex(o=>o.voters.includes(u.username)) : -1;
   const canVoteOnPoll = post.vote && u && OMH.checkGeoEligibility(post.vote.regions);
@@ -1549,10 +1997,11 @@ function renderPost(post) {
     const opts = post.vote.options.map((o,i) => {
       const pct = totalVotes ? Math.round(o.voters.length/totalVotes*100) : 0;
       const isVoted = i === userVotedIdx;
-      const clickable = canVoteOnPoll && voteOpen && !userVotedIdx >= 0;
+      const clickable = canVoteOnPoll && voteOpen && !isVoted;
       return `
         <div class="vote-option ${isVoted?'voted':''} ${!canVoteOnPoll?'not-eligible':''}"
-          onclick="${canVoteOnPoll && voteOpen ? `initiateVoteWithGPS('${post.id}',${i})` : ''}">
+          style="cursor:${clickable?'pointer':'default'};"
+          onclick="${clickable ? `initiateVoteWithGPS('${post.id}',${i})` : ''}">
           <div class="vote-bar" style="width:${pct}%"></div>
           <div class="vote-option-text" style="display:flex;justify-content:space-between;">
             <span>${isVoted?'✓ ':''}${o.label}</span>
@@ -1610,6 +2059,7 @@ function renderPost(post) {
 
   return `
     <div class="post-card" id="post-${post.id}">
+      ${repostBanner}
       <div style="display:flex;gap:12px;">
         <div class="avatar" style="background:${avatarColor(post.author)};">${initials(post.authorName)}</div>
         <div style="flex:1;min-width:0;">
@@ -1627,23 +2077,43 @@ function renderPost(post) {
           </div>
           <div style="margin-top:6px;font-size:15px;line-height:1.55;word-break:break-word;">${renderContent(post.content)}</div>
           ${post.image ? `<img class="post-img" src="${post.image}" alt="post" loading="lazy" />` : ''}
+          ${quotedBlock}
           ${voteHtml}
           ${repliesHtml}
-          <div style="display:flex;gap:18px;margin-top:12px;align-items:center;">
-            <button onclick="openReply('${post.id}')" style="background:none;border:none;cursor:pointer;color:var(--muted);display:flex;align-items:center;gap:5px;font-size:13px;font-family:'Sora',sans-serif;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'">
+          <div style="display:flex;gap:0;margin-top:12px;align-items:center;justify-content:space-between;">
+            <button onclick="openReply('${post.id}')" style="background:none;border:none;cursor:pointer;color:var(--muted);display:flex;align-items:center;gap:4px;font-size:13px;font-family:'Sora',sans-serif;padding:6px 8px;border-radius:8px;transition:all .15s;" onmouseover="this.style.color='var(--accent)';this.style.background='var(--glow)'" onmouseout="this.style.color='var(--muted)';this.style.background='none'">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-              ${post.replies.length}
+              <span>${post.replies.length||''}</span>
             </button>
-            <button onclick="OMH.likePost('${post.id}')" style="background:none;border:none;cursor:pointer;color:${liked?'var(--red)':'var(--muted)'};display:flex;align-items:center;gap:5px;font-size:13px;font-family:'Sora',sans-serif;" ${!liked?`onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'"`:''}>
+            <div style="position:relative;display:inline-flex;">
+              <button onclick="toggleRepostMenu('${post.id}')" style="background:none;border:none;cursor:pointer;color:${reposted?'var(--green)':'var(--muted)'};display:flex;align-items:center;gap:4px;font-size:13px;font-family:'Sora',sans-serif;padding:6px 8px;border-radius:8px;transition:all .15s;" onmouseover="this.style.color='var(--green)';this.style.background='rgba(16,185,129,.08)'" onmouseout="this.style.color='${reposted?'var(--green)':'var(--muted)'}';this.style.background='none'">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="${reposted?'currentColor':'none'}" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                <span>${(post.reposts||[]).length||''}</span>
+              </button>
+              <div id="rp-menu-${post.id}" style="display:none;position:absolute;top:36px;left:0;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:6px;z-index:50;min-width:150px;box-shadow:0 8px 24px rgba(0,0,0,.4);">
+                <button onclick="OMH.repostPost('${post.id}');closeRepostMenu('${post.id}')" style="width:100%;background:none;border:none;cursor:pointer;color:var(--text);font-size:13px;font-family:'Sora',sans-serif;padding:8px 12px;border-radius:8px;text-align:left;display:flex;align-items:center;gap:8px;" onmouseover="this.style.background='var(--glow)'" onmouseout="this.style.background='none'">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                  ${reposted?'Undo Repost':'Repost'}
+                </button>
+                <button onclick="openQuote('${post.id}');closeRepostMenu('${post.id}')" style="width:100%;background:none;border:none;cursor:pointer;color:var(--text);font-size:13px;font-family:'Sora',sans-serif;padding:8px 12px;border-radius:8px;text-align:left;display:flex;align-items:center;gap:8px;" onmouseover="this.style.background='var(--glow)'" onmouseout="this.style.background='none'">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5"/><path d="M17.5 3.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 7.5-7.5z"/></svg>
+                  Quote
+                </button>
+              </div>
+            </div>
+            <button onclick="OMH.likePost('${post.id}')" style="background:none;border:none;cursor:pointer;color:${liked?'var(--red)':'var(--muted)'};display:flex;align-items:center;gap:4px;font-size:13px;font-family:'Sora',sans-serif;padding:6px 8px;border-radius:8px;transition:all .15s;" onmouseover="this.style.color='var(--red)';this.style.background='rgba(239,68,68,.08)'" onmouseout="this.style.color='${liked?'var(--red)':'var(--muted)'}';this.style.background='none'">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="${liked?'currentColor':'none'}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-              ${post.likes.length}
+              <span>${post.likes.length||''}</span>
             </button>
-            <button onclick="sharePost('${post.id}')" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;" onmouseover="this.style.color='var(--green)'" onmouseout="this.style.color='var(--muted)'" title="Share">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            <button onclick="OMH.bookmarkPost('${post.id}')" style="background:none;border:none;cursor:pointer;color:${bookmarked?'var(--accent)':'var(--muted)'};display:flex;align-items:center;padding:6px 8px;border-radius:8px;transition:all .15s;" onmouseover="this.style.color='var(--accent)';this.style.background='var(--glow)'" onmouseout="this.style.color='${bookmarked?'var(--accent)':'var(--muted)'}';this.style.background='none'" title="Bookmark">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="${bookmarked?'currentColor':'none'}" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
             </button>
-            ${canFlag ? `
-            <button onclick="OMH.flagPost('${post.id}')" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;" onmouseover="this.style.color='var(--amber)'" onmouseout="this.style.color='var(--muted)'" title="Flag for Community Court">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+            <div style="display:flex;align-items:center;gap:3px;color:var(--muted);font-size:12px;padding:0 4px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              ${post.views||0}
+            </div>
+            ${u ? `<button onclick="OMH.flagPost('${post.id}')" style="background:none;border:none;cursor:pointer;color:${isFlagged?'var(--amber)':'var(--muted)'};padding:6px 8px;border-radius:8px;transition:all .15s;" onmouseover="this.style.color='var(--amber)';this.style.background='rgba(245,158,11,.08)'" onmouseout="this.style.color='${isFlagged?'var(--amber)':'var(--muted)'}';this.style.background='none'" title="${isFlagged?'In Community Court':'Flag for Community Court'}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="${isFlagged?'currentColor':'none'}" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
             </button>` : ''}
           </div>
         </div>
@@ -1653,8 +2123,9 @@ function renderPost(post) {
 
 // Feed
 function renderFeed() {
-  renderSidebar();
-  renderRightPanel();
+  // Only update the feed list — sidebar/rightpanel are updated by renderApp/navigate
+  const el = document.getElementById('feed-list');
+  if (!el) return;
   let posts = OMH.searchQuery
     ? OMH.searchPosts(OMH.searchQuery)
     : OMH.posts.filter(p => !p.removed);
@@ -1663,11 +2134,15 @@ function renderFeed() {
     posts = posts.filter(p => p.city===u.city || p.state===u.state || p.country===u.country);
   }
   if (OMH.currentTab === 'votes') posts = posts.filter(p => p.vote !== null);
-  const el = document.getElementById('feed-list');
-  if (!el) return;
   el.innerHTML = posts.length
     ? posts.map(renderPost).join('')
     : `<div style="text-align:center;color:var(--muted);padding:60px 20px;font-size:14px;">${OMH.searchQuery?`No results for "${OMH.searchQuery}"`:'No posts yet. Be the first!'}</div>`;
+}
+
+function renderApp() {
+  renderSidebar();
+  renderFeed();
+  renderRightPanel();
 }
 
 // Near me
@@ -1753,11 +2228,16 @@ function renderCourtPage() {
   }
   el.innerHTML = OMH.courtCases.map(c => {
     const total = c.keepVotes.length + c.removeVotes.length;
+    const quorum = c.quorum || OMH.courtQuorum();
     const removePct = total ? Math.round(c.removeVotes.length/total*100) : 0;
     const keepPct   = total ? Math.round(c.keepVotes.length/total*100) : 0;
     const hasVoted  = OMH.currentUser && (c.keepVotes.includes(OMH.currentUser.username) || c.removeVotes.includes(OMH.currentUser.username));
     const votedKeep = OMH.currentUser && c.keepVotes.includes(OMH.currentUser.username);
     const votedRemove = OMH.currentUser && c.removeVotes.includes(OMH.currentUser.username);
+    // Region eligibility check for display
+    const u = OMH.currentUser;
+    const regionLocked = c.postState || c.postCountry;
+    const canVoteRegion = !regionLocked || !u || (c.postState ? u.state === c.postState : u.country === c.postCountry);
     return `
       <div class="court-case">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px;">
@@ -1781,12 +2261,14 @@ function renderCourtPage() {
             <div style="font-size:11px;color:var(--muted);">Remove (${removePct}%)</div>
           </div>
         </div>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">${total} votes · 21 minimum · 75% to decide · ${Math.max(0,21-total)} more needed</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">${total} votes · ${quorum} needed · 75% to decide · ${Math.max(0,quorum-total)} more needed${c.postState ? ' · <span style="color:var(--accent);">📍 '+c.postState+' residents only</span>' : (c.postCountry ? ' · <span style="color:var(--accent);">📍 '+c.postCountry+' residents only</span>' : '')}</div>
         ${c.status==='open' && OMH.currentUser ? `
+          ${canVoteRegion ? `
           <div style="display:flex;gap:8px;">
             <button onclick="OMH.courtVote('${c.id}','keep')" class="btn-ghost" style="flex:1;font-size:13px;padding:8px;${votedKeep?'border-color:var(--green);color:var(--green);':''}">✅ Keep${votedKeep?' (your vote)':''}</button>
             <button onclick="OMH.courtVote('${c.id}','remove')" class="btn-ghost" style="flex:1;font-size:13px;padding:8px;${votedRemove?'border-color:var(--red);color:var(--red);':''}">🗑️ Remove${votedRemove?' (your vote)':''}</button>
-          </div>` : ''}
+          </div>` : `<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px;background:var(--glow);border-radius:8px;">📍 Only ${c.postState || c.postCountry} residents can vote on this case</div>`}
+          ` : ''}
         ${!OMH.currentUser ? `<div style="font-size:12px;color:var(--muted);text-align:center;"><span class="link" onclick="showModal('login')">Sign in to participate in jury</span></div>` : ''}
       </div>`;
   }).join('');
@@ -1848,17 +2330,229 @@ function renderProfilePage() {
 }
 
 // Explore
+// ── Explore: region browse state ─────────────────────────────────────────────
+let exploreRegions = [];   // active filter zones [{type,value}]
+let exploreMode   = 'posts'; // 'posts' | 'votes' | 'trending'
+let newRegionZones = [];   // zones being built for a new saved region
+
 function renderExplorePage() {
-  const tags = {};
-  OMH.posts.forEach(p => (p.tags||[]).forEach(t => { tags[t] = (tags[t]||0)+1; }));
-  const sorted = Object.entries(tags).sort((a,b)=>b[1]-a[1]).slice(0,12);
-  const el = document.getElementById('trending-list');
+  renderExploreSavedRegions();
+  renderExploreChips();
+  renderExploreResults();
+  renderVoteSavedRegionsRow();
+}
+
+function setExploreMode(mode) {
+  exploreMode = mode;
+  ['posts','votes','trending'].forEach(m => {
+    const btn = document.getElementById('exp-btn-' + m);
+    if (btn) btn.classList.toggle('active-filter', m === mode);
+  });
+  const trending = document.getElementById('explore-trending-section');
+  if (trending) trending.style.display = mode === 'trending' ? 'block' : 'none';
+  renderExploreResults();
+}
+
+function addExploreRegion() {
+  const type  = document.getElementById('explore-region-type').value;
+  const value = document.getElementById('explore-region-value').value.trim();
+  if (!value && type !== 'global') return;
+  // avoid dupes
+  if (!exploreRegions.find(r => r.type === type && r.value.toLowerCase() === value.toLowerCase())) {
+    exploreRegions.push({type, value: type === 'global' ? 'global' : value});
+  }
+  document.getElementById('explore-region-value').value = '';
+  renderExploreChips();
+  renderExploreResults();
+}
+
+function removeExploreRegion(i) {
+  exploreRegions.splice(i, 1);
+  renderExploreChips();
+  renderExploreResults();
+}
+
+function loadSavedRegionIntoExplore(regionName) {
+  const u = OMH.currentUser;
+  if (!u) return;
+  const sr = (u.savedRegions||[]).find(r => r.name === regionName);
+  if (!sr) return;
+  // replace current filter with this saved region's zones
+  exploreRegions = [...sr.zones];
+  renderExploreChips();
+  renderExploreResults();
+}
+
+function renderExploreChips() {
+  const el = document.getElementById('explore-region-chips');
   if (!el) return;
-  el.innerHTML = sorted.length ? sorted.map(([tag,count]) => `
-    <div class="trend-item" onclick="handleSearch('#${tag}');navigate('feed')">
-      <div style="font-size:14px;font-weight:600;color:var(--accent);">#${tag}</div>
-      <div style="font-size:12px;color:var(--muted);">${count} post${count!==1?'s':''}</div>
-    </div>`).join('') : '<div style="color:var(--muted);font-size:14px;">No trending topics yet.</div>';
+  if (exploreRegions.length === 0) {
+    el.innerHTML = '<span style="font-size:12px;color:var(--muted);">No region filter — showing all posts.</span>';
+    return;
+  }
+  el.innerHTML = exploreRegions.map((r, i) =>
+    `<span class="geo-badge" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;" onclick="removeExploreRegion(${i})">📍 ${r.value || r.type} <span style="opacity:.6;font-size:10px;">✕</span></span>`
+  ).join('') + `<button onclick="exploreRegions=[];renderExploreChips();renderExploreResults()" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:11px;padding:2px 6px;">Clear all</button>`;
+}
+
+function postMatchesExploreRegions(post) {
+  if (exploreRegions.length === 0) return true;
+  return exploreRegions.some(r => {
+    if (r.type === 'global')  return true;
+    if (r.type === 'country') return (post.country||'').toLowerCase() === r.value.toLowerCase();
+    if (r.type === 'state')   return (post.state||'').toLowerCase()   === r.value.toLowerCase();
+    if (r.type === 'city')    return (post.city||'').toLowerCase()     === r.value.toLowerCase();
+    return false;
+  });
+}
+
+function renderExploreResults() {
+  const el = document.getElementById('explore-region-results');
+  const trendSec = document.getElementById('explore-trending-section');
+  if (!el) return;
+
+  if (exploreMode === 'trending') {
+    el.innerHTML = '';
+    if (trendSec) trendSec.style.display = 'block';
+    // render trending within filtered region
+    const filtered = OMH.posts.filter(p => !p.removed && postMatchesExploreRegions(p));
+    const tags = {};
+    filtered.forEach(p => (p.tags||[]).forEach(t => { tags[t] = (tags[t]||0)+1; }));
+    const sorted = Object.entries(tags).sort((a,b)=>b[1]-a[1]).slice(0,12);
+    const tl = document.getElementById('trending-list');
+    if (tl) tl.innerHTML = sorted.length ? sorted.map(([tag,count]) =>
+      `<div class="trend-item" onclick="handleSearch('#${tag}');navigate('feed')">
+        <div style="font-size:14px;font-weight:600;color:var(--accent);">#${tag}</div>
+        <div style="font-size:12px;color:var(--muted);">${count} post${count!==1?'s':''}</div>
+      </div>`).join('') : '<div style="color:var(--muted);font-size:14px;">No trending topics in this region yet.</div>';
+    return;
+  }
+
+  if (trendSec) trendSec.style.display = 'none';
+
+  let posts = OMH.posts.filter(p => !p.removed && postMatchesExploreRegions(p));
+  if (exploreMode === 'votes') posts = posts.filter(p => p.vote && new Date(p.vote.closesAt) > new Date());
+
+  if (posts.length === 0) {
+    const label = exploreRegions.length ? `in ${exploreRegions.map(r=>r.value||'global').join(', ')}` : '';
+    el.innerHTML = `<div style="text-align:center;color:var(--muted);padding:40px 20px;font-size:14px;">No ${exploreMode === 'votes' ? 'active votes' : 'posts'} found ${label}.</div>`;
+    return;
+  }
+
+  el.innerHTML = posts.map(renderPost).join('');
+}
+
+// ── Saved regions (Explore) ──────────────────────────────────────────────────
+function showCreateRegionUI() {
+  if (!OMH.currentUser) { showModal('login'); return; }
+  newRegionZones = [];
+  const ui = document.getElementById('create-region-ui');
+  const nameEl = document.getElementById('new-region-name');
+  const zonesEl = document.getElementById('new-region-zones');
+  if (nameEl) nameEl.value = '';
+  if (zonesEl) zonesEl.innerHTML = '';
+  if (ui) ui.style.display = ui.style.display === 'none' ? 'block' : 'none';
+}
+
+function addZoneToNew() {
+  const type  = document.getElementById('new-zone-type').value;
+  const value = document.getElementById('new-zone-value').value.trim();
+  if (!value && type !== 'global') { toast('Enter a location name.', 'error'); return; }
+  newRegionZones.push({type, value: type === 'global' ? 'global' : value});
+  document.getElementById('new-zone-value').value = '';
+  renderNewZones();
+}
+
+function renderNewZones() {
+  const el = document.getElementById('new-region-zones');
+  if (!el) return;
+  el.innerHTML = newRegionZones.map((z, i) =>
+    `<span class="geo-badge" style="cursor:pointer;" onclick="newRegionZones.splice(${i},1);renderNewZones()">📍 ${z.value||z.type} ✕</span>`
+  ).join('');
+}
+
+function saveNewRegion() {
+  const u = OMH.currentUser;
+  if (!u) return;
+  const name = (document.getElementById('new-region-name').value||'').trim();
+  if (!name) { toast('Give your region a name.', 'error'); return; }
+  if (newRegionZones.length === 0) { toast('Add at least one area.', 'error'); return; }
+  if (!u.savedRegions) u.savedRegions = [];
+  // free users: max 1 saved region
+  if (!u.isPremium && !u.isAdmin && u.savedRegions.length >= 1) {
+    showModal('premium'); return;
+  }
+  // replace if same name
+  u.savedRegions = u.savedRegions.filter(r => r.name !== name);
+  u.savedRegions.push({name, zones: [...newRegionZones]});
+  OMH.save();
+  document.getElementById('create-region-ui').style.display = 'none';
+  newRegionZones = [];
+  renderExploreSavedRegions();
+  renderVoteSavedRegionsRow();
+  toast(`Region "${name}" saved.`, 'success', 2500);
+}
+
+function deleteSavedRegion(name) {
+  const u = OMH.currentUser;
+  if (!u) return;
+  u.savedRegions = (u.savedRegions||[]).filter(r => r.name !== name);
+  OMH.save();
+  renderExploreSavedRegions();
+  renderVoteSavedRegionsRow();
+  toast('Region deleted.', 'info', 2000);
+}
+
+function renderExploreSavedRegions() {
+  const el = document.getElementById('saved-regions-list');
+  if (!el) return;
+  const u = OMH.currentUser;
+  const regions = u ? (u.savedRegions||[]) : [];
+  if (regions.length === 0) {
+    el.innerHTML = u
+      ? '<div style="font-size:12px;color:var(--muted);">No saved regions yet. Create one to quickly filter content by custom area.</div>'
+      : '<div style="font-size:12px;color:var(--muted);"><span class="link" onclick="showModal(\'login\')">Sign in</span> to save custom regions.</div>';
+    return;
+  }
+  el.innerHTML = `<div style="font-size:12px;color:var(--muted);font-weight:600;margin-bottom:6px;">Saved Regions</div>` +
+    regions.map(sr => `
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:6px;">
+        <div style="flex:1;cursor:pointer;" onclick="loadSavedRegionIntoExplore('${sr.name.replace(/'/g,"\\'")}')">
+          <div style="font-size:13px;font-weight:600;">${sr.name}</div>
+          <div style="font-size:11px;color:var(--muted);">${sr.zones.map(z=>z.value||'Global').join(' · ')}</div>
+        </div>
+        <button onclick="loadSavedRegionIntoExplore('${sr.name.replace(/'/g,"\\'")}');setExploreMode('posts')" class="btn-ghost" style="font-size:11px;padding:4px 10px;">Posts</button>
+        <button onclick="loadSavedRegionIntoExplore('${sr.name.replace(/'/g,"\\'")}');setExploreMode('votes')" class="btn-ghost" style="font-size:11px;padding:4px 10px;">Votes</button>
+        <button onclick="deleteSavedRegion('${sr.name.replace(/'/g,"\\'")}' )" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;padding:0 4px;" title="Delete">✕</button>
+      </div>`
+    ).join('');
+}
+
+// ── Saved regions in vote modal ───────────────────────────────────────────────
+function renderVoteSavedRegionsRow() {
+  const el = document.getElementById('v-saved-regions-row');
+  if (!el) return;
+  const u = OMH.currentUser;
+  const regions = u ? (u.savedRegions||[]) : [];
+  if (regions.length === 0) { el.innerHTML = ''; return; }
+  el.innerHTML = `<span style="font-size:11px;color:var(--muted);align-self:center;">Saved:</span>` +
+    regions.map(sr =>
+      `<button onclick="applyVoteSavedRegion('${sr.name.replace(/'/g,"\\'")}' )" class="btn-ghost" style="font-size:11px;padding:4px 10px;">📍 ${sr.name}</button>`
+    ).join('');
+}
+
+function applyVoteSavedRegion(name) {
+  const u = OMH.currentUser;
+  if (!u) return;
+  const sr = (u.savedRegions||[]).find(r => r.name === name);
+  if (!sr) return;
+  // Check multi-region gate for non-premium
+  if (!u.isPremium && !u.isAdmin && sr.zones.length > 1) {
+    showModal('premium'); return;
+  }
+  pendingVoteRegions = [...sr.zones];
+  renderVoteRegionTags();
+  toast(`Applied region: ${name}`, 'success', 2000);
 }
 
 // Settings
@@ -2013,6 +2707,7 @@ function openComposeModal() {
   const ta = document.getElementById('compose-modal-text');
   if (ta) ta.value = '';
   composeModalImage = null;
+  pendingVote = null;
   const imgWrap = document.getElementById('compose-modal-img-wrap');
   if (imgWrap) imgWrap.style.display = 'none';
   const preview = document.getElementById('compose-modal-vote-preview');
@@ -2074,7 +2769,7 @@ function submitComposeModal() {
   if (!OMH.currentUser) return;
   const ta = document.getElementById('compose-modal-text');
   const text = ta ? ta.value.trim() : '';
-  if (!text && !composeModalImage) { toast('Write something first.', 'error'); return; }
+  if (!text && !composeModalImage && !pendingVote) { toast('Write something or attach a GeoVote first.', 'error'); return; }
   if (text.length > 500) { toast('Max 500 characters.', 'error'); return; }
   const tags = (text.match(/#\w+/g) || []).map(function(t){ return t.slice(1); });
   const post = {
@@ -2095,9 +2790,11 @@ function submitComposeModal() {
   OMH.addPost(post);
   pendingVote = null;
   composeModalImage = null;
+  // Close modal immediately — feels instant like X
   closeModal('compose');
   renderFeed();
-  toast('Posted! 🚀', 'success');
+  // Small delay so toast appears after modal is gone
+  setTimeout(() => toast('Your post was sent.', 'success', 3000), 80);
 }
 // ═══ END COMPOSE MODAL ═══
 
@@ -2126,14 +2823,194 @@ function handleGlobalAvatarUpload(e) {
 // Keep old function as alias for safety
 function uploadAvatar(e) { handleGlobalAvatarUpload(e); }
 
-// Boot
-function renderApp() {
-  renderSidebar();
-  renderFeed();
-  renderRightPanel();
+// ── Repost menu ──────────────────────────────────────────────────────────────
+function toggleRepostMenu(postId) {
+  if (!OMH.currentUser) { showModal('login'); return; }
+  const m = document.getElementById('rp-menu-' + postId);
+  if (!m) return;
+  const isOpen = m.style.display !== 'none';
+  // close all open menus first
+  document.querySelectorAll('[id^="rp-menu-"]').forEach(el => el.style.display = 'none');
+  if (!isOpen) {
+    m.style.display = 'block';
+    // close on outside click
+    setTimeout(() => {
+      document.addEventListener('click', function h(e) {
+        if (!m.contains(e.target)) { m.style.display = 'none'; document.removeEventListener('click', h); }
+      });
+    }, 10);
+  }
+}
+function closeRepostMenu(postId) {
+  const m = document.getElementById('rp-menu-' + postId);
+  if (m) m.style.display = 'none';
 }
 
+// ── Quote post ───────────────────────────────────────────────────────────────
+let _quotePostId = null;
+function openQuote(postId) {
+  if (!OMH.currentUser) { showModal('login'); return; }
+  _quotePostId = postId;
+  const post = OMH.posts.find(p => p.id === postId);
+  if (!post) return;
+  const prev = document.getElementById('quote-preview');
+  if (prev) prev.innerHTML = `<div style="font-size:12px;color:var(--muted);margin-bottom:4px;">@${post.author} · ${timeAgo(post.timestamp)}</div><div style="font-size:13px;color:var(--text);">${post.content.slice(0,180)}${post.content.length>180?'…':''}</div>`;
+  const ta = document.getElementById('quote-text');
+  if (ta) ta.value = '';
+  showModal('quote');
+}
+function submitQuote() {
+  if (!OMH.currentUser || !_quotePostId) return;
+  const ta = document.getElementById('quote-text');
+  const text = ta ? ta.value.trim() : '';
+  const original = OMH.posts.find(p => p.id === _quotePostId);
+  if (!original) return;
+  const post = {
+    id: 'q-' + Date.now(),
+    author: OMH.currentUser.username,
+    authorName: OMH.currentUser.fullName,
+    content: text,
+    tags: (text.match(/#\w+/g)||[]).map(t=>t.slice(1)),
+    image: null, vote: null,
+    likes: [], replies: [], reposts: [],
+    timestamp: new Date().toISOString(),
+    editedAt: null,
+    city: OMH.currentUser.city, state: OMH.currentUser.state, country: OMH.currentUser.country,
+    removed: false,
+    isQuote: true,
+    quotedPostId: _quotePostId,
+    quotedContent: original.content.slice(0,180),
+    quotedAuthor: original.authorName,
+    quotedHandle: original.author
+  };
+  OMH.addPost(post);
+  OMH.pushNotification(original.author, 'quote', OMH.currentUser.username, _quotePostId);
+  _quotePostId = null;
+  closeModal('quote');
+  renderFeed();
+  setTimeout(() => toast('Quote posted.', 'success', 2500), 60);
+}
+
+// ── GIF picker (Giphy) ───────────────────────────────────────────────────────
+function openGifPicker() {
+  if (!OMH.currentUser) { showModal('login'); return; }
+  const url = 'https://giphy.com/';
+  window.open(url, '_blank', 'width=700,height=500');
+  toast('Copy a GIF link from Giphy and paste it in your post.', 'info', 4000);
+}
+
+// ── Emoji picker ─────────────────────────────────────────────────────────────
+const EMOJIS = ['😀','😂','🥰','😎','🤔','😮','😢','😡','👍','👎','❤️','🔥','✅','❌','🎉','🗳️','📍','⚡','🌍','💡','🤝','📢','🏛️','⚖️','🚀','💬','👥','🔒','📊','🌐'];
+function toggleEmojiPicker() {
+  const panel = document.getElementById('emoji-picker-panel');
+  if (!panel) return;
+  if (panel.style.display === 'none' || !panel.style.display) {
+    panel.style.display = 'flex';
+    if (!panel.dataset.built) {
+      panel.dataset.built = '1';
+      EMOJIS.forEach(e => {
+        const btn = document.createElement('button');
+        btn.textContent = e;
+        btn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:20px;padding:4px;border-radius:6px;transition:background .1s;';
+        btn.onmouseover = () => btn.style.background = 'var(--glow)';
+        btn.onmouseout = () => btn.style.background = 'none';
+        btn.onclick = () => {
+          const ta = document.getElementById('compose-modal-text');
+          if (ta) { ta.value += e; ta.focus(); document.getElementById('compose-modal-count').textContent = ta.value.length + ' / 500'; }
+          panel.style.display = 'none';
+        };
+        panel.appendChild(btn);
+      });
+    }
+  } else {
+    panel.style.display = 'none';
+  }
+}
+
+// ── Notification badge ───────────────────────────────────────────────────────
+function renderNotifBadge() {
+  const badge = document.getElementById('notif-badge');
+  if (!badge) return;
+  const count = OMH.unreadNotifCount();
+  if (count > 0) {
+    badge.textContent = count > 9 ? '9+' : count;
+    badge.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// ── Notifications page ───────────────────────────────────────────────────────
+function renderNotificationsPage() {
+  const el = document.getElementById('notif-list');
+  if (!el) return;
+  if (!OMH.currentUser) {
+    el.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--muted);">Sign in to see notifications</div>';
+    return;
+  }
+  const mine = OMH.notifications.filter(n => n.to === OMH.currentUser.username);
+  // Mark all as read when viewing
+  mine.forEach(n => n.read = true);
+  OMH.save();
+  renderNotifBadge();
+  if (mine.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--muted);">No notifications yet.</div>';
+    return;
+  }
+  const icons = { like:'❤️', repost:'🔁', quote:'💬', reply:'↩️', flag:'🚩' };
+  const labels = { like:'liked your post', repost:'reposted your post', quote:'quoted your post', reply:'replied to your post', flag:'flagged your post for Community Court' };
+  el.innerHTML = mine.map(n => `
+    <div style="display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border);${n.read?'':'background:var(--glow);'}" onclick="navigate('feed')" style="cursor:pointer;">
+      <div style="font-size:22px;margin-top:2px;">${icons[n.type]||'🔔'}</div>
+      <div>
+        <div style="font-size:14px;"><span style="font-weight:700;">@${n.from}</span> ${labels[n.type]||n.type}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px;">${timeAgo(n.timestamp)}</div>
+      </div>
+    </div>`).join('');
+}
+function markAllNotifsRead() {
+  OMH.notifications.filter(n => n.to === OMH.currentUser?.username).forEach(n => n.read = true);
+  OMH.save();
+  renderNotifBadge();
+  renderNotificationsPage();
+}
+
+// ── Bookmarks page ───────────────────────────────────────────────────────────
+function renderBookmarksPage() {
+  const el = document.getElementById('bookmarks-list');
+  if (!el) return;
+  if (!OMH.currentUser) {
+    el.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--muted);">Sign in to see bookmarks</div>';
+    return;
+  }
+  const ids = OMH.currentUser.bookmarks || [];
+  const posts = ids.map(id => OMH.posts.find(p => p.id === id)).filter(Boolean).filter(p => !p.removed);
+  if (posts.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--muted);">No bookmarks yet.<br><span style="font-size:13px;">Tap 🔖 on any post to save it here.</span></div>';
+    return;
+  }
+  el.innerHTML = posts.map(renderPost).join('');
+}
+
+// ── View counter (increment on render) ───────────────────────────────────────
+// Called passively; we batch-save only every 5 views to reduce writes
+let _viewQueue = {};
+function trackView(postId) {
+  _viewQueue[postId] = (_viewQueue[postId]||0) + 1;
+  if (Object.keys(_viewQueue).length >= 5) flushViews();
+}
+function flushViews() {
+  Object.entries(_viewQueue).forEach(([id, count]) => {
+    const p = OMH.posts.find(p => p.id === id);
+    if (p) p.views = (p.views||0) + count;
+  });
+  _viewQueue = {};
+  OMH.save();
+}
+
+// Boot
 renderApp();
+renderNotifBadge();
 </script>
 <!-- Global avatar file input - must be in DOM not innerHTML -->
 <input type="file" id="global-avatar-input" accept="image/*" style="display:none;" onchange="handleGlobalAvatarUpload(event)" />
