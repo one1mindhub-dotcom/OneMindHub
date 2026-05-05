@@ -1593,17 +1593,18 @@ async function doLogin() {
   const pass = document.getElementById('login-pass').value;
   if (!id || !pass) { toast('Enter your email/username and password.', 'error'); return; }
 
-  // Look up user by email or username
-  let query = sb.from('users').select('*');
-  if (id.includes('@')) query = query.eq('email', id);
-  else query = query.eq('username', id);
+  // Look up user by email or username — select password_hash explicitly
+  let query = sb.from('users').select('*, password_hash');
+  if (id.includes('@')) query = query.eq('email', id.toLowerCase());
+  else query = query.eq('username', id.toLowerCase());
   const { data: users, error: qErr } = await query.limit(1);
   if (qErr) { toast('Login error: ' + qErr.message, 'error'); return; }
-  if (!users || users.length === 0) { toast('Invalid credentials.', 'error'); return; }
+  if (!users || users.length === 0) { toast('No account found with that username or email.', 'error'); return; }
 
   const dbUser = users[0];
-  // Simple password check — in production use Supabase Auth; for now match stored hash
-  if (dbUser.password_hash !== pass) { toast('Invalid credentials. Check your username and password.', 'error'); return; }
+  // Password check — compare stored hash to entered password
+  if (!dbUser.password_hash) { toast('Account has no password set. Contact support.', 'error'); return; }
+  if (dbUser.password_hash !== pass) { toast('Incorrect password.', 'error'); return; }
 
   const user = dbRowToUser(dbUser);
   // Load bookmarks
