@@ -392,8 +392,8 @@ const OMH = {
     if (post.author !== this.currentUser?.username && !this.currentUser?.isAdmin) return false;
     post.removed = true;
     sb.from('posts').update({ removed: true }).eq('id', postId);
-    // Re-fetch posts after short delay so all open sessions stay in sync
-    setTimeout(() => OMH.fetchPosts().then(() => { renderFeed(); if (OMH.currentPage === 'profile') renderProfilePage(); }), 500);
+    // Re-fetch after delay to sync other sessions (longer delay to let Supabase confirm write)
+    setTimeout(() => OMH.fetchPosts().then(() => { renderFeed(); if (OMH.currentPage === 'profile') renderProfilePage(); }), 2000);
     return true;
   },
 
@@ -1217,11 +1217,25 @@ initApp();
 <div id="modal-reply" class="overlay" style="display:none;" onclick="closeModalOnOverlay(event,'reply')" data-overlay-close="reply">
   <div class="modal" style="max-width:480px;position:relative;">
     <div style="font-size:16px;font-weight:700;margin-bottom:16px;">Reply</div>
-    <div id="reply-parent" style="background:var(--surface);border-radius:10px;padding:12px;font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.5;border-left:3px solid var(--accent);"></div>
-    <textarea class="input-field" id="reply-text" placeholder="Your reply…" rows="3"></textarea>
-    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;">
-      <button data-close="reply" class="btn-ghost">Cancel</button>
-      <button class="btn-primary" onclick="submitReply()">Reply</button>
+    <div id="reply-parent" style="background:var(--surface);border-radius:10px;padding:12px;margin-bottom:14px;border-left:3px solid var(--accent);"></div>
+    <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:10px;">
+      <div id="reply-avatar" style="width:36px;height:36px;border-radius:50%;flex-shrink:0;"></div>
+      <textarea class="input-field" id="reply-text" placeholder="Your reply…" rows="3" style="flex:1;border:none;background:transparent;padding:4px 0;font-size:15px;resize:none;"></textarea>
+    </div>
+    <div id="reply-media-preview" style="display:none;margin-bottom:10px;position:relative;">
+      <img id="reply-media-img" src="" style="max-width:100%;max-height:200px;border-radius:10px;display:none;">
+      <video id="reply-media-vid" controls style="max-width:100%;max-height:200px;border-radius:10px;display:none;"></video>
+      <button onclick="removeReplyMedia()" style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:14px;line-height:1;">✕</button>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border);padding-top:10px;margin-top:4px;">
+      <label style="cursor:pointer;color:var(--accent);" title="Attach image or video">
+        <input type="file" id="reply-media-input" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm" style="display:none;" onchange="handleReplyMedia(event)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      </label>
+      <div style="display:flex;gap:10px;">
+        <button data-close="reply" class="btn-ghost">Cancel</button>
+        <button class="btn-primary" onclick="submitReply()">Reply</button>
+      </div>
     </div>
     <button data-close="reply" class="modal-close-btn">✕</button>
   </div>
@@ -1422,14 +1436,7 @@ function switchTab(tab) {
   renderFeed();
 }
 
-// Close menus on outside click
-document.addEventListener('click', () => {
-  if (OMH.openMenuId) {
-    const el = document.getElementById('menu-'+OMH.openMenuId);
-    if (el) el.classList.remove('open');
-    OMH.openMenuId = null;
-  }
-});
+// Menu closing handled by floating menu system
 
 function togglePostMenu(postId, e) {
   e.stopPropagation();
@@ -2190,40 +2197,95 @@ function blockUser(username) {
 
 // Reply
 let replyTargetId = null;
+let replyMediaUrl = null;
+
 function openReply(postId) {
   if (!OMH.currentUser) { showModal('login'); return; }
   replyTargetId = postId;
+  replyMediaUrl = null;
   const post = OMH.posts.find(p => p.id===postId);
   const author = OMH.users.find(u => u.username === post.author);
-  const avatarHtml = author?.avatar
-    ? `<img src="${author.avatar}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
-    : `<div style="width:32px;height:32px;border-radius:50%;background:${getAvatarColor(post.author)};display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:13px;flex-shrink:0;">${(post.author||'?')[0].toUpperCase()}</div>`;
+
+  // Show original post author info
+  const authorAvatar = author?.avatar
+    ? `<img src="${author.avatar}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">`
+    : `<div style="width:32px;height:32px;border-radius:50%;background:${getAvatarColor(post.author)};display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:13px;">${(post.author||'?')[0].toUpperCase()}</div>`;
   const displayName = author?.fullName || post.author;
   document.getElementById('reply-parent').innerHTML = `
     <div style="display:flex;gap:10px;align-items:flex-start;">
-      ${avatarHtml}
+      ${authorAvatar}
       <div>
         <div style="font-weight:600;font-size:13px;margin-bottom:2px;">${displayName} <span style="color:var(--muted);font-weight:400;">@${post.author}</span></div>
-        <div style="font-size:13px;color:var(--text);line-height:1.5;">${post.content.slice(0,120)}${post.content.length>120?'…':''}</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.5;">${post.content.slice(0,120)}${post.content.length>120?'…':''}</div>
       </div>
     </div>`;
+
+  // Show current user's avatar in reply box
+  const me = OMH.currentUser;
+  const myAvatarEl = document.getElementById('reply-avatar');
+  if (myAvatarEl) {
+    myAvatarEl.innerHTML = me.avatar
+      ? `<img src="${me.avatar}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">`
+      : `<div style="width:36px;height:36px;border-radius:50%;background:${getAvatarColor(me.username)};display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:14px;">${(me.username||'?')[0].toUpperCase()}</div>`;
+  }
+
+  // Reset media
   document.getElementById('reply-text').value = '';
+  document.getElementById('reply-media-preview').style.display = 'none';
+  document.getElementById('reply-media-img').style.display = 'none';
+  document.getElementById('reply-media-vid').style.display = 'none';
+  document.getElementById('reply-media-input').value = '';
   showModal('reply');
+}
+
+async function handleReplyMedia(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const isVideo = ['video/mp4','video/quicktime','video/webm'].includes(file.type);
+  const preview = document.getElementById('reply-media-preview');
+  const img = document.getElementById('reply-media-img');
+  const vid = document.getElementById('reply-media-vid');
+  preview.style.display = 'block';
+  if (isVideo) {
+    vid.src = URL.createObjectURL(file);
+    vid.style.display = 'block';
+    img.style.display = 'none';
+  } else {
+    img.src = URL.createObjectURL(file);
+    img.style.display = 'block';
+    vid.style.display = 'none';
+  }
+  toast('Uploading media...', 'info', 30000);
+  try {
+    replyMediaUrl = await uploadToBackblaze(file);
+    toast('Media ready ✓', 'success', 2000);
+  } catch(err) {
+    toast('Media upload failed: ' + err.message, 'error');
+    removeReplyMedia();
+  }
+}
+
+function removeReplyMedia() {
+  replyMediaUrl = null;
+  document.getElementById('reply-media-preview').style.display = 'none';
+  document.getElementById('reply-media-input').value = '';
 }
 
 function submitReply() {
   const text = document.getElementById('reply-text').value.trim();
-  if (!text) return;
+  if (!text && !replyMediaUrl) return;
   const post = OMH.posts.find(p => p.id===replyTargetId);
   if (!post) return;
   post.replies.push({
     author: OMH.currentUser.username,
     authorName: OMH.currentUser.fullName,
     content: text,
+    media: replyMediaUrl || null,
     timestamp: new Date().toISOString()
   });
   OMH.pushNotification(post.author, 'reply', OMH.currentUser.username, post.id);
   OMH.save();
+  replyMediaUrl = null;
   closeModal('reply');
   renderFeed();
   setTimeout(() => toast('Reply posted.', 'success', 2500), 60);
@@ -2453,7 +2515,10 @@ function renderPost(post) {
       post.replies.slice(-2).map(r => `
         <div style="display:flex;gap:8px;margin-top:6px;">
           <div class="avatar" style="width:26px;height:26px;font-size:10px;background:${avatarColor(r.author)};">${initials(r.authorName)}</div>
-          <div style="font-size:12px;line-height:1.4;"><span style="font-weight:600;">@${r.author}</span> <span style="color:var(--muted);">${r.content.slice(0,100)}</span></div>
+          <div style="font-size:12px;line-height:1.4;">
+            <span style="font-weight:600;">@${r.author}</span> <span style="color:var(--muted);">${r.content ? r.content.slice(0,100) : ''}</span>
+            ${r.media ? `<div style="margin-top:4px;"><img src="${r.media}" style="max-width:180px;max-height:120px;border-radius:8px;object-fit:cover;" onerror="this.style.display='none'"></div>` : ''}
+          </div>
         </div>`).join('') +
       (post.replies.length > 2 ? `<div style="font-size:11px;color:var(--muted);margin-top:6px;cursor:pointer;" onclick="openReply('${post.id}')">+${post.replies.length-2} more replies</div>` : '') +
     `</div>`;
