@@ -448,7 +448,7 @@ const OMH = {
     return Math.min(51, Math.max(5, Math.round(Math.sqrt(n) * 1.5)));
   },
 
-  flagPost(postId) {
+  async flagPost(postId) {
     const post = this.posts.find(p => p.id === postId);
     if (!post || !this.currentUser) return;
     if (post.author === this.currentUser.username && !this.currentUser.isAdmin) {
@@ -466,63 +466,85 @@ const OMH = {
       openedBy: this.currentUser.username, openedAt: new Date().toISOString(),
       keepVotes: [], removeVotes: [], status: 'open', quorum: this.courtQuorum()
     };
-    this.courtCases.unshift(case_);
-    this.save();
-    // Persist to Supabase
-    sb.from('court_cases').insert({
+    // Save to Supabase FIRST — if it fails, don't add to local state
+    const { data: insertedCase, error } = await sb.from('court_cases').insert({
       id: case_.id, post_id: case_.postId, post_content: case_.postContent,
-      post_author: case_.postAuthor, post_country: case_.postCountry, post_state: case_.postState,
+      post_author: case_.postAuthor, post_country: case_.postCountry || '', post_state: case_.postState || '',
       opened_by: case_.openedBy, opened_at: case_.openedAt,
       keep_votes: [], remove_votes: [], status: 'open', quorum: case_.quorum
-    });
+    }).select();
+    if (error) {
+      console.error('Court insert error:', error);
+      toast('Failed to send to Court: ' + error.message + ' (code: ' + error.code + ')', 'error');
+      return;
+    }
+    this.courtCases.unshift(case_);
+    this.save();
     toast('Post sent to Community Court.', 'success');
     renderFeed();
   },
 
-  courtVote(caseId, verdict) {
+  async courtVote(caseId, verdict) {
     const case_ = this.courtCases.find(c => c.id === caseId);
-    if (!case_ || case_.status !== 'open' || !this.currentUser) return;
+    if (!this.currentUser) { toast('Sign in to vote.', 'error'); return; }
+    if (!case_) { toast('Case not found — try refreshing.', 'error'); return; }
+    if (case_.status !== 'open') { toast('This case is already closed.', 'info'); return; }
     const u = this.currentUser, uid = u.username;
     if (case_.postState && u.state && case_.postState !== u.state) {
       toast('Only residents of ' + case_.postState + ' can vote on this case.', 'error'); return;
     }
-    case_.keepVotes   = case_.keepVotes.filter(x => x !== uid);
-    case_.removeVotes = case_.removeVotes.filter(x => x !== uid);
+    // Update vote arrays
+    case_.keepVotes   = (case_.keepVotes   || []).filter(x => x !== uid);
+    case_.removeVotes = (case_.removeVotes || []).filter(x => x !== uid);
     if (verdict === 'keep')   case_.keepVotes.push(uid);
     if (verdict === 'remove') case_.removeVotes.push(uid);
     const total = case_.keepVotes.length + case_.removeVotes.length;
+    // Check for verdict
+    let newStatus = case_.status;
     if (total >= case_.quorum) {
-      if (case_.removeVotes.length / total >= 0.75) {
-        case_.status = 'removed';
-        const post = this.posts.find(p => p.id === case_.postId);
-        if (post) { post.removed = true; sb.from('posts').update({ removed: true }).eq('id', case_.postId); }
-        this.save(); renderCourtPage(); renderFeed();
-        sb.from('court_cases').update({ keep_votes: case_.keepVotes, remove_votes: case_.removeVotes, status: 'removed' }).eq('id', case_.id);
-        toast('Community Court: Post removed by jury verdict.', 'info'); return;
-      } else if (case_.keepVotes.length / total >= 0.75) {
-        case_.status = 'kept';
-        this.save(); renderCourtPage();
-        sb.from('court_cases').update({ keep_votes: case_.keepVotes, remove_votes: case_.removeVotes, status: 'kept' }).eq('id', case_.id);
-        toast('Community Court: Post cleared — jury voted to keep.', 'info'); return;
-      }
+      if (case_.removeVotes.length / total >= 0.75) newStatus = 'removed';
+      else if (case_.keepVotes.length / total >= 0.75) newStatus = 'kept';
     }
-    this.save(); renderCourtPage();
-    // Persist vote to Supabase
-    sb.from('court_cases').update({
-      keep_votes: case_.keepVotes, remove_votes: case_.removeVotes, status: case_.status
+    case_.status = newStatus;
+    // Save to Supabase — single await covers all paths
+    const { error: voteErr } = await sb.from('court_cases').update({
+      keep_votes: case_.keepVotes,
+      remove_votes: case_.removeVotes,
+      status: newStatus
     }).eq('id', case_.id);
-    toast('Vote cast — ' + (verdict === 'keep' ? 'Keep' : 'Remove'), 'vote-cast', 3000);
+    if (voteErr) {
+      // Roll back in-memory change
+      case_.keepVotes   = case_.keepVotes.filter(x => x !== uid);
+      case_.removeVotes = case_.removeVotes.filter(x => x !== uid);
+      toast('Vote failed to save: ' + voteErr.message, 'error');
+      return;
+    }
+    // If post got removed, mark it
+    if (newStatus === 'removed') {
+      const post = this.posts.find(p => p.id === case_.postId);
+      if (post) { post.removed = true; sb.from('posts').update({ removed: true }).eq('id', case_.postId); }
+      this.save(); renderCourtPage(); renderFeed();
+      toast('Community Court: Post removed by jury verdict.', 'info');
+    } else if (newStatus === 'kept') {
+      this.save(); renderCourtPage();
+      toast('Community Court: Post cleared — jury voted to keep.', 'info');
+    } else {
+      this.save(); renderCourtPage();
+      toast('Vote cast — ' + (verdict === 'keep' ? '✅ Keep' : '🗑️ Remove'), 'vote-cast', 3000);
+    }
   },
 
   async fetchCourtCases() {
-    const { data } = await sb.from('court_cases').select('*').order('opened_at', { ascending: false }).limit(200);
+    const { data, error } = await sb.from('court_cases').select('*').order('opened_at', { ascending: false }).limit(200);
+    if (error) { console.error('fetchCourtCases error:', error); return; }
     if (data) {
       this.courtCases = data.map(r => ({
         id: r.id, postId: r.post_id, postContent: r.post_content,
         postAuthor: r.post_author, postCountry: r.post_country || '', postState: r.post_state || '',
         openedBy: r.opened_by, openedAt: r.opened_at,
-        keepVotes: r.keep_votes || [], removeVotes: r.remove_votes || [],
-        status: r.status, quorum: r.quorum
+        keepVotes: Array.isArray(r.keep_votes) ? r.keep_votes : [],
+        removeVotes: Array.isArray(r.remove_votes) ? r.remove_votes : [],
+        status: r.status || 'open', quorum: r.quorum || 5
       }));
     }
   },
@@ -1483,7 +1505,7 @@ function navigate(page) {
     if (input) input.value = OMH.searchQuery || '';
     if (clearBtn) clearBtn.style.display = OMH.searchQuery ? 'flex' : 'none';
   }
-  if (page === 'court')         renderCourtPage();
+  if (page === 'court')         { OMH.fetchCourtCases().then(() => renderCourtPage()); }
   if (page === 'votes')         renderVotesPage();
   if (page === 'profile')       { if (page === 'profile' && !profileUsername) profileTab = 'posts'; renderProfilePage(); }
   if (page === 'explore')       renderExplorePage();
@@ -1580,6 +1602,9 @@ async function doLogin() {
   OMH.login(user);
   closeModal('login');
   toast(`Welcome back, ${user.fullName.split(' ')[0]}! 👋`, 'success');
+  // Refresh court cases so they show for this user
+  await OMH.fetchCourtCases();
+  if (OMH.currentPage === 'court') renderCourtPage();
   // Check for pending activation from Stripe redirect
   const pending = localStorage.getItem('omh_pending_activation');
   if (pending) {
@@ -1714,6 +1739,7 @@ async function doSignup() {
   recordNewAccount(username);
   OMH.login(user);
   closeModal('signup');
+  navigate('feed');
   toast(`Welcome to OneMindHub, ${name.split(' ')[0]}! 🎉`, 'success');
   // Check for pending activation from Stripe redirect
   const pending = localStorage.getItem('omh_pending_activation');
