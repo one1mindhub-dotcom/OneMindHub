@@ -288,6 +288,8 @@ const OMH = {
     await this.fetchPosts();
     // Load users for avatar display
     await this.fetchUsers();
+    // Load court cases from Supabase
+    await this.fetchCourtCases();
     // Load notifications if logged in
     if (this.currentUser) await this.fetchNotifications();
   },
@@ -466,6 +468,13 @@ const OMH = {
     };
     this.courtCases.unshift(case_);
     this.save();
+    // Persist to Supabase
+    sb.from('court_cases').insert({
+      id: case_.id, post_id: case_.postId, post_content: case_.postContent,
+      post_author: case_.postAuthor, post_country: case_.postCountry, post_state: case_.postState,
+      opened_by: case_.openedBy, opened_at: case_.openedAt,
+      keep_votes: [], remove_votes: [], status: 'open', quorum: case_.quorum
+    });
     toast('Post sent to Community Court.', 'success');
     renderFeed();
   },
@@ -488,15 +497,34 @@ const OMH = {
         const post = this.posts.find(p => p.id === case_.postId);
         if (post) { post.removed = true; sb.from('posts').update({ removed: true }).eq('id', case_.postId); }
         this.save(); renderCourtPage(); renderFeed();
+        sb.from('court_cases').update({ keep_votes: case_.keepVotes, remove_votes: case_.removeVotes, status: 'removed' }).eq('id', case_.id);
         toast('Community Court: Post removed by jury verdict.', 'info'); return;
       } else if (case_.keepVotes.length / total >= 0.75) {
         case_.status = 'kept';
         this.save(); renderCourtPage();
+        sb.from('court_cases').update({ keep_votes: case_.keepVotes, remove_votes: case_.removeVotes, status: 'kept' }).eq('id', case_.id);
         toast('Community Court: Post cleared — jury voted to keep.', 'info'); return;
       }
     }
     this.save(); renderCourtPage();
+    // Persist vote to Supabase
+    sb.from('court_cases').update({
+      keep_votes: case_.keepVotes, remove_votes: case_.removeVotes, status: case_.status
+    }).eq('id', case_.id);
     toast('Vote cast — ' + (verdict === 'keep' ? 'Keep' : 'Remove'), 'vote-cast', 3000);
+  },
+
+  async fetchCourtCases() {
+    const { data } = await sb.from('court_cases').select('*').order('opened_at', { ascending: false }).limit(200);
+    if (data) {
+      this.courtCases = data.map(r => ({
+        id: r.id, postId: r.post_id, postContent: r.post_content,
+        postAuthor: r.post_author, postCountry: r.post_country || '', postState: r.post_state || '',
+        openedBy: r.opened_by, openedAt: r.opened_at,
+        keepVotes: r.keep_votes || [], removeVotes: r.remove_votes || [],
+        status: r.status, quorum: r.quorum
+      }));
+    }
   },
 
   searchPosts(q) {
@@ -1104,6 +1132,14 @@ initApp();
       <div style="grid-column:1/-1;" class="early-notice">
         📍 <strong style="color:var(--text);">Location lock:</strong> Your location can only be changed once every 6 months. This prevents gaming of geo-restricted votes. Early version uses self-declared location + GPS corroboration.
       </div>
+      <div style="grid-column:1/-1;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;">
+        <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin:0;">
+          <input type="checkbox" id="su-terms" style="margin-top:2px;flex-shrink:0;width:16px;height:16px;accent-color:var(--accent);cursor:pointer;" />
+          <span style="font-size:12px;color:var(--muted);line-height:1.5;">
+            I agree to the <a href="onemind-legal.html" target="_blank" style="color:var(--accent);text-decoration:none;font-weight:600;">Terms of Service</a> and <a href="onemind-legal.html#privacy" target="_blank" style="color:var(--accent);text-decoration:none;font-weight:600;">Privacy Policy</a>. I confirm I am at least 13 years old and that the location I provide is accurate.
+          </span>
+        </label>
+      </div>
       <div style="grid-column:1/-1;"><button class="btn-primary" onclick="doSignup()" style="width:100%;padding:12px;">Create Account</button></div>
       <div style="grid-column:1/-1;text-align:center;"><span style="font-size:12px;color:var(--muted);">Already have an account? </span><span class="link" style="font-size:12px;" onclick="closeModal('signup');showModal('login')">Sign in</span></div>
     </div>
@@ -1210,6 +1246,24 @@ initApp();
       <button class="btn-primary" style="width:100%;padding:14px;font-size:15px;">⚡ Subscribe — $8/mo</button>
     </a>
     <div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6;text-align:center;">Secure payment via Stripe · Cancel anytime · Badge activates automatically</div>
+
+    <!-- Founder tier -->
+    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+      <div style="background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(217,119,6,.04));border:1px solid rgba(245,158,11,.3);border-radius:12px;padding:16px;text-align:left;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span style="font-size:20px;">👑</span>
+          <div>
+            <div style="font-weight:800;font-size:14px;color:#f59e0b;">Founder Badge — Limited</div>
+            <div style="font-size:11px;color:var(--muted);">One-time · Lifetime access · Exclusive badge</div>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.6;">Be among the first 100 founders. You'll get the permanent 👑 Founder badge, lifetime Premium, and your name in OneMind's history.</div>
+        <a href="https://buy.stripe.com/dRmcN6f8v6NkdRZeeC77O09" target="_blank" rel="noopener" style="display:block;text-decoration:none;">
+          <button style="width:100%;padding:12px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;border:none;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;font-family:'Sora',sans-serif;">👑 Become a Founder</button>
+        </a>
+      </div>
+    </div>
+
     <button data-close="premium" class="btn-ghost" style="width:100%;padding:12px;margin-top:10px;">Maybe later</button>
     <button data-close="premium" class="modal-close-btn">✕</button>
   </div>
@@ -1599,6 +1653,10 @@ function recordNewAccount(username) {
 // ────────────────────────────────────────────────────────────────────────────
 
 async function doSignup() {
+  if (!document.getElementById('su-terms')?.checked) {
+    toast('Please agree to the Terms of Service and Privacy Policy to continue.', 'error');
+    return;
+  }
   const name     = document.getElementById('su-name').value.trim();
   const username = document.getElementById('su-username').value.trim().replace('@','').toLowerCase();
   const email    = document.getElementById('su-email').value.trim().toLowerCase();
@@ -1661,17 +1719,20 @@ function doLogout() {
   toast('Signed out successfully.', 'info');
 }
 
-function activatePremium(tier) {
+async function activatePremium(tier) {
   if (!OMH.currentUser) { toast('Please sign in first.', 'error'); return; }
   tier = tier || 'verified';
+  const updates = tier === 'founder'
+    ? { is_founder: true, is_premium: true }
+    : { is_premium: true };
+  const { error } = await sb.from('users').update(updates).eq('username', OMH.currentUser.username);
+  if (error) { toast('Activation failed: ' + error.message, 'error'); return; }
   if (tier === 'founder') {
     OMH.currentUser.isFounder = true;
     OMH.currentUser.isPremium = true;
-    sb.from('users').update({ is_founder: true, is_premium: true }).eq('username', OMH.currentUser.username);
     toast('👑 Founder status activated! Thank you for believing in OneMind.', 'success', 5000);
   } else {
     OMH.currentUser.isPremium = true;
-    sb.from('users').update({ is_premium: true }).eq('username', OMH.currentUser.username);
     toast('⚡ Verified activated! Enjoy unlimited GeoVotes.', 'success');
   }
   OMH.save();
@@ -1684,7 +1745,8 @@ function activatePremium(tier) {
 // Stripe payment links
 const STRIPE_LINKS = {
   monthly: 'https://buy.stripe.com/6oU00ke4rc7EaFNb2q77O02',
-  yearly:  'https://buy.stripe.com/6oUfZi9ObgnU0198Ui77O01'
+  yearly:  'https://buy.stripe.com/6oUfZi9ObgnU0198Ui77O01',
+  founder: 'https://buy.stripe.com/dRmcN6f8v6NkdRZeeC77O09'
 };
 
 function selectPlan(plan) {
@@ -3256,15 +3318,20 @@ function renderSettings() {
       </div>
       <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
         <div class="settings-row">
-          <span style="font-size:14px;">Username</span>
-          <span style="font-size:13px;color:var(--muted);">@${u.username}</span>
-        </div>
-        <div class="settings-row">
           <span style="font-size:14px;">Member since</span>
           <span style="font-size:13px;color:var(--muted);">${new Date(u.joinDate).toLocaleDateString()}</span>
         </div>
-        <div style="margin-top:16px;">
+        <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px;">
+          <div>
+            <label>Change Username <span style="color:var(--muted);font-weight:400;font-size:11px;">(current: @${u.username})</span></label>
+            <input class="input-field" id="set-username" placeholder="new_username" style="margin-top:6px;" />
+            <div style="font-size:11px;color:var(--muted);margin-top:4px;">Lowercase letters, numbers, underscores only.</div>
+          </div>
+          <button class="btn-primary" onclick="saveUsername()" style="align-self:flex-start;padding:8px 20px;font-size:13px;">Change Username</button>
+        </div>
+        <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap;">
           <button class="btn-danger" onclick="if(confirm('Sign out?'))doLogout()" style="font-size:13px;padding:8px 20px;">Sign Out</button>
+          <button onclick="confirmDeleteAccount()" style="background:transparent;border:1px solid var(--red);color:var(--red);border-radius:10px;padding:8px 20px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Sora',sans-serif;">🗑 Delete Account</button>
         </div>
       </div>
     </div>
@@ -3361,6 +3428,43 @@ function saveLocation() {
   toast('Location updated! Locked for 6 months.', 'success');
   renderSidebar();
   renderSettings();
+}
+
+async function saveUsername() {
+  const newUsername = document.getElementById('set-username')?.value.trim().toLowerCase();
+  if (!newUsername) { toast('Enter a new username.', 'error'); return; }
+  if (!/^[a-z0-9_]{3,30}$/.test(newUsername)) {
+    toast('Username must be 3-30 chars: letters, numbers, underscores only.', 'error'); return;
+  }
+  if (newUsername === OMH.currentUser.username) { toast('That is already your username.', 'info'); return; }
+  const { data: existing } = await sb.from('users').select('username').eq('username', newUsername).single();
+  if (existing) { toast('That username is already taken.', 'error'); return; }
+  const oldUsername = OMH.currentUser.username;
+  const { error } = await sb.from('users').update({ username: newUsername }).eq('username', oldUsername);
+  if (error) { toast('Failed: ' + error.message, 'error'); return; }
+  OMH.currentUser.username = newUsername;
+  OMH.save();
+  toast('Username changed to @' + newUsername + '!', 'success');
+  renderSettings();
+  renderSidebar();
+}
+
+async function confirmDeleteAccount() {
+  const confirmed = confirm(
+    'Are you sure you want to permanently delete your account?\n\n' +
+    'This will delete all your posts, votes, and data. This cannot be undone.\n\n' +
+    'Type DELETE in the next prompt to confirm.'
+  );
+  if (!confirmed) return;
+  const typed = prompt('Type DELETE to permanently delete your account:');
+  if (typed !== 'DELETE') { toast('Account deletion cancelled.', 'info'); return; }
+  const u = OMH.currentUser;
+  await sb.from('posts').delete().eq('author', u.username);
+  await sb.from('notifications').delete().eq('recipient', u.username);
+  await sb.from('users').delete().eq('username', u.username);
+  OMH.logout();
+  toast('Your account has been deleted. Sorry to see you go.', 'info', 5000);
+  navigate('feed');
 }
 
 // Right panel
