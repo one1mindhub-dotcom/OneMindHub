@@ -545,6 +545,7 @@ const OMH = {
       sb.from('posts').update({ reposts: original.reposts }).eq('id', postId);
       sb.from('posts').delete().match({ is_repost: true, repost_of: postId, author: uid });
       renderFeed();
+      if (this.currentPage === 'profile') renderProfilePage();
       toast('Repost removed.', 'info', 2000);
       return;
     }
