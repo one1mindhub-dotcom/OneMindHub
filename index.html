@@ -1133,7 +1133,13 @@ document.addEventListener('visibilitychange', async () => {
     </div>
     <div style="display:flex;flex-direction:column;gap:14px;">
       <div><label>Email or Username</label><input class="input-field" id="login-id" type="text" placeholder="you@example.com" /></div>
-      <div><label>Password</label><input class="input-field" id="login-pass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()" /></div>
+      <div><label>Password</label>
+        <div style="position:relative;">
+          <input class="input-field" id="login-pass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()" style="padding-right:44px;" />
+          <button type="button" onclick="togglePwVisible('login-pass','login-pass-eye')" tabindex="-1" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;line-height:1;">
+            <svg id="login-pass-eye" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div></div>
       <button class="btn-primary" onclick="doLogin()" style="width:100%;padding:12px;">Sign In</button>
       <button class="btn-ghost" onclick="closeModal('login');showModal('signup')" style="width:100%;padding:12px;">Create Account</button>
     </div>
@@ -1154,7 +1160,14 @@ document.addEventListener('visibilitychange', async () => {
       <div style="grid-column:1/-1;"><label>Full Name</label><input class="input-field" id="su-name" type="text" placeholder="Jane Smith" /></div>
       <div style="grid-column:1/-1;"><label>Username</label><input class="input-field" id="su-username" type="text" placeholder="janesmith" /></div>
       <div style="grid-column:1/-1;"><label>Email</label><input class="input-field" id="su-email" type="email" placeholder="jane@example.com" /></div>
-      <div style="grid-column:1/-1;"><label>Password</label><input class="input-field" id="su-pass" type="password" placeholder="••••••••" oninput="updatePwStrength(this.value)" />
+      <div style="grid-column:1/-1;">
+        <label>Password</label>
+        <div style="position:relative;">
+          <input class="input-field" id="su-pass" type="password" placeholder="••••••••" oninput="updatePwStrength(this.value)" style="padding-right:44px;" />
+          <button type="button" onclick="togglePwVisible('su-pass','su-pass-eye')" tabindex="-1" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;line-height:1;">
+            <svg id="su-pass-eye" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
         <div class="pw-strength-wrap">
           <div class="pw-strength-bar-bg"><div class="pw-strength-bar" id="pw-bar"></div></div>
           <div class="pw-strength-label" id="pw-label">Enter a password</div>
@@ -1289,21 +1302,6 @@ document.addEventListener('visibilitychange', async () => {
       <button class="btn-primary" style="width:100%;padding:14px;font-size:15px;">⚡ Subscribe — $8/mo</button>
     </a>
     <div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6;text-align:center;">Secure payment via Stripe · Cancel anytime · Badge activates automatically</div>
-
-    <!-- Founder tier -->
-    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
-      <div style="background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(217,119,6,.04));border:1px solid rgba(245,158,11,.3);border-radius:12px;padding:16px;text-align:left;">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-          <span style="font-size:20px;">👑</span>
-          <div>
-            <div style="font-weight:800;font-size:14px;color:#f59e0b;">Founder Badge — Limited</div>
-            <div style="font-size:11px;color:var(--muted);">One-time · Lifetime access · Exclusive badge</div>
-          </div>
-        </div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.6;">Be among the first 100 founders. You'll get the permanent 👑 Founder badge, lifetime Premium, and your name in OneMind's history.</div>
-        <button onclick="launchFounderCheckout()" style="width:100%;padding:12px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;border:none;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;font-family:'Sora',sans-serif;">👑 Become a Founder</button>
-      </div>
-    </div>
 
     <button data-close="premium" class="btn-ghost" style="width:100%;padding:12px;margin-top:10px;">Maybe later</button>
     <button data-close="premium" class="modal-close-btn">✕</button>
@@ -1760,6 +1758,20 @@ async function doSignup() {
   }
 }
 
+function togglePwVisible(inputId, eyeId) {
+  const input = document.getElementById(inputId);
+  const eye = document.getElementById(eyeId);
+  if (!input) return;
+  if (input.type === 'password') {
+    input.type = 'text';
+    // Swap to eye-off icon
+    if (eye) eye.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>';
+  } else {
+    input.type = 'password';
+    if (eye) eye.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+  }
+}
+
 function doLogout() {
   OMH.logout();
   toast('Signed out successfully.', 'info');
@@ -2031,7 +2043,7 @@ function showVoteModal() {
   // Check vote limit
   const limitNotice = document.getElementById('vote-limit-notice');
   if (limitNotice) {
-    if (!OMH.currentUser.isPremium && !OMH.currentUser.isAdmin) {
+    if (!OMH.currentUser.isPremium && !OMH.currentUser.isFounder && !OMH.currentUser.isAdmin) {
       const count = OMH.getVoteCount(OMH.currentUser);
       limitNotice.style.display = 'block';
       if (count >= 3) {
@@ -2108,7 +2120,7 @@ function addVoteRegion() {
   const type  = document.getElementById('v-region-type').value;
   const value = document.getElementById('v-region-value').value.trim();
   if (type !== 'global' && !value) { toast('Enter a region value.', 'error'); return; }
-  if (!OMH.currentUser.isPremium && !OMH.currentUser.isAdmin && pendingVoteRegions.length >= 1) {
+  if (!OMH.currentUser.isPremium && !OMH.currentUser.isFounder && !OMH.currentUser.isAdmin && pendingVoteRegions.length >= 1) {
     showModal('premium');
     return;
   }
@@ -2135,7 +2147,7 @@ function removeRegion(i) {
 function attachVote() {
   if (!OMH.currentUser) return;
   // Check free limit
-  if (!OMH.currentUser.isPremium && !OMH.currentUser.isAdmin) {
+  if (!OMH.currentUser.isPremium && !OMH.currentUser.isFounder && !OMH.currentUser.isAdmin) {
     if (OMH.getVoteCount(OMH.currentUser) >= 3) {
       toast('Monthly vote limit reached. Upgrade to Verified for unlimited.', 'error');
       return;
@@ -2877,11 +2889,12 @@ function renderVotesPage() {
 function renderCourtPage() {
   const el = document.getElementById('court-list');
   if (!el) return;
-  if (OMH.courtCases.length === 0) {
+  const visibleCases = OMH.courtCases.filter(c => c.status !== 'removed');
+  if (visibleCases.length === 0) {
     el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:60px 0;font-size:14px;">No active cases. The community is civil! 🕊️</div>';
     return;
   }
-  el.innerHTML = OMH.courtCases.map(c => {
+  el.innerHTML = visibleCases.map(c => {
     const total = c.keepVotes.length + c.removeVotes.length;
     const quorum = c.quorum || OMH.courtQuorum();
     const removePct = total ? Math.round(c.removeVotes.length/total*100) : 0;
@@ -3264,7 +3277,7 @@ function saveNewRegion() {
   if (newRegionZones.length === 0) { toast('Add at least one area.', 'error'); return; }
   if (!u.savedRegions) u.savedRegions = [];
   // free users: max 1 saved region
-  if (!u.isPremium && !u.isAdmin && u.savedRegions.length >= 1) {
+  if (!u.isPremium && !u.isFounder && !u.isAdmin && u.savedRegions.length >= 1) {
     showModal('premium'); return;
   }
   // replace if same name
@@ -3332,7 +3345,7 @@ function applyVoteSavedRegion(name) {
   const sr = (u.savedRegions||[]).find(r => r.name === name);
   if (!sr) return;
   // Check multi-region gate for non-premium
-  if (!u.isPremium && !u.isAdmin && sr.zones.length > 1) {
+  if (!u.isPremium && !u.isFounder && !u.isAdmin && sr.zones.length > 1) {
     showModal('premium'); return;
   }
   pendingVoteRegions = [...sr.zones];
