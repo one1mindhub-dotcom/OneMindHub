@@ -7,6 +7,13 @@
 <meta name="description" content="OneMindHub — Geo-Restricted Direct Democracy. One human. One vote." />
 <link rel="manifest" href="data:application/json,{&quot;name&quot;:&quot;OneMindHub&quot;,&quot;short_name&quot;:&quot;OMH&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;%23080810&quot;,&quot;theme_color&quot;:&quot;%23080810&quot;,&quot;start_url&quot;:&quot;/&quot;}" />
 <title>OneMindHub</title>
+<link rel="icon" type="image/png" href="https://udufmhupndtuorosogth.supabase.co/storage/v1/object/public/Images/uploads/logo.png" />
+<link rel="apple-touch-icon" href="https://udufmhupndtuorosogth.supabase.co/storage/v1/object/public/Images/uploads/logo.png" />
+<meta property="og:title" content="OneMindHub — Direct Democracy Platform" />
+<meta property="og:description" content="One human. One vote. Geo-verified direct democracy." />
+<meta property="og:url" content="https://onemindhub.com" />
+<meta name="twitter:card" content="summary" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <style>
@@ -111,9 +118,11 @@ label{font-size:13px;color:var(--muted);font-weight:500;margin-bottom:5px;displa
 .trend-item{padding:10px 14px;border-radius:12px;cursor:pointer;transition:background .2s}
 .trend-item:hover{background:var(--card)}
 
-/* Premium badge */
-.premium-badge{background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700}
+/* Membership badges */
+.badge-verified{background:linear-gradient(135deg,#4f6ef7,#7c3aed);color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700}
+.badge-founder{background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700}
 .admin-badge{background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700}
+.premium-badge{background:linear-gradient(135deg,#4f6ef7,#7c3aed);color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700}
 
 /* Toast — X/Twitter style */
 #toast-container{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:none;}
@@ -232,6 +241,12 @@ label{font-size:13px;color:var(--muted);font-weight:500;margin-bottom:5px;displa
 
 <!-- APP STATE -->
 <script>
+// ── Supabase client ──────────────────────────────────────────────────────────
+const SUPABASE_URL  = 'https://udufmhupndtuorosogth.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkdWZtaHVwbmR0dW9yb3NvZ3RoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1OTkyNzgsImV4cCI6MjA5MzE3NTI3OH0.ww2-MxOyG9N5hGPG-fo5Boq879U-BDuFjlCFTJurAtw';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+// ── OMH state object ─────────────────────────────────────────────────────────
 const OMH = {
   currentUser: null,
   users: [],
@@ -243,50 +258,106 @@ const OMH = {
   searchQuery: '',
   openMenuId: null,
 
+  // ── Persistence: no-op save (Supabase handles it) ─────────────────────────
   save() {
-    localStorage.setItem('omh_users', JSON.stringify(this.users));
-    localStorage.setItem('omh_posts', JSON.stringify(this.posts));
-    localStorage.setItem('omh_court', JSON.stringify(this.courtCases));
-    localStorage.setItem('omh_notifs', JSON.stringify(this.notifications));
-    // Update current user ref in users array
+    // Persist session locally so page refresh keeps you logged in
     if (this.currentUser) {
-      const idx = this.users.findIndex(u => u.username === this.currentUser.username);
-      if (idx > -1) this.users[idx] = this.currentUser;
       localStorage.setItem('omh_session', JSON.stringify(this.currentUser));
+    } else {
+      localStorage.removeItem('omh_session');
     }
   },
 
-  load() {
-    this.users = JSON.parse(localStorage.getItem('omh_users') || '[]');
-    this.posts = JSON.parse(localStorage.getItem('omh_posts') || '[]');
-    this.courtCases = JSON.parse(localStorage.getItem('omh_court') || '[]');
-    this.notifications = JSON.parse(localStorage.getItem('omh_notifs') || '[]');
+  async load() {
+    // Restore session from localStorage
     const sess = localStorage.getItem('omh_session');
     if (sess) {
-      const saved = JSON.parse(sess);
-      // Re-sync from users array for freshness
-      const fresh = this.users.find(u => u.username === saved.username);
-      this.currentUser = fresh || saved;
+      try { this.currentUser = JSON.parse(sess); } catch(e) {}
     }
+    // Always re-fetch current user from Supabase to get latest premium/founder status
+    if (this.currentUser) {
+      const fresh = await this.fetchUser(this.currentUser.username);
+      if (fresh) {
+        // Preserve bookmarks from session, update everything else from DB
+        fresh.bookmarks = this.currentUser.bookmarks || [];
+        this.currentUser = fresh;
+        this.save();
+      }
+    }
+    // Load posts from Supabase
+    await this.fetchPosts();
+    // Load users for avatar display
+    await this.fetchUsers();
+    // Load notifications if logged in
+    if (this.currentUser) await this.fetchNotifications();
+  },
+
+  async fetchUsers() {
+    const { data } = await sb.from('users').select('username,full_name,avatar_url,is_premium,is_founder,is_admin').limit(500);
+    if (data) this.users = data.map(r => ({
+      username: r.username, fullName: r.full_name,
+      avatarUrl: r.avatar_url, isPremium: r.is_premium,
+      isFounder: r.is_founder, isAdmin: r.is_admin
+    }));
+  },
+
+  async fetchPosts() {
+    const { data, error } = await sb
+      .from('posts')
+      .select('*')
+      .neq('removed', true)
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (!error && data) {
+      this.posts = data.map(dbRowToPost);
+    } else if (error) {
+      console.error('fetchPosts error:', error);
+    }
+  },
+
+  async fetchNotifications() {
+    if (!this.currentUser) return;
+    const { data } = await sb
+      .from('notifications')
+      .select('*')
+      .eq('to_user', this.currentUser.username)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (data) this.notifications = data.map(n => ({
+      id: n.id, to: n.to_user, from: n.from_user,
+      type: n.type, postId: n.post_id,
+      read: n.read, timestamp: n.created_at
+    }));
+    renderNotifBadge();
+  },
+
+  async fetchUser(username) {
+    const { data } = await sb.from('users').select('*').eq('username', username).single();
+    return data ? dbRowToUser(data) : null;
   },
 
   login(user) {
     this.currentUser = user;
-    localStorage.setItem('omh_session', JSON.stringify(user));
+    this.notifications = [];
+    this.save();
     renderApp();
+    this.fetchNotifications().then(() => {
+      renderNotifBadge();
+      if (this.currentPage === 'notifications') renderNotificationsPage();
+    });
   },
 
   logout() {
     this.currentUser = null;
-    localStorage.removeItem('omh_session');
+    this.notifications = [];
+    this.save();
     renderApp();
   },
 
   canChangeLocation() {
     if (!this.currentUser) return false;
     if (!this.currentUser.locationLastChanged) return true;
-    const sixMonthsMs = 180 * 24 * 60 * 60 * 1000;
-    return (Date.now() - new Date(this.currentUser.locationLastChanged)) > sixMonthsMs;
+    return (Date.now() - new Date(this.currentUser.locationLastChanged)) > 180 * 24 * 60 * 60 * 1000;
   },
 
   locationUnlockDate() {
@@ -298,7 +369,7 @@ const OMH = {
 
   addPost(post) {
     this.posts.unshift(post);
-    this.save();
+    // Supabase insert happens in submitPost()
   },
 
   editPost(postId, newContent) {
@@ -307,7 +378,11 @@ const OMH = {
     post.content = newContent;
     post.editedAt = new Date().toISOString();
     post.tags = (newContent.match(/#\w+/g) || []).map(t => t.slice(1));
-    this.save();
+    sb.from('posts').update({
+      content: newContent,
+      tags: post.tags,
+      edited_at: post.editedAt
+    }).eq('id', postId);
     return true;
   },
 
@@ -316,8 +391,7 @@ const OMH = {
     if (!post) return false;
     if (post.author !== this.currentUser?.username && !this.currentUser?.isAdmin) return false;
     post.removed = true;
-    post.deletedAt = new Date().toISOString();
-    this.save();
+    sb.from('posts').update({ removed: true }).eq('id', postId);
     return true;
   },
 
@@ -325,19 +399,21 @@ const OMH = {
     const post = this.posts.find(p => p.id === postId);
     if (!post || !this.currentUser) return;
     const uid = this.currentUser.username;
-    if (post.likes.includes(uid)) {
+    const liked = post.likes.includes(uid);
+    if (liked) {
       post.likes = post.likes.filter(u => u !== uid);
     } else {
       post.likes.push(uid);
       this.pushNotification(post.author, 'like', uid, postId);
     }
-    this.save();
+    sb.from('posts').update({ likes: post.likes }).eq('id', postId);
     renderFeed();
+    if (this.currentPage === 'profile') renderProfileContent();
   },
 
   checkGeoEligibility(regions) {
     if (!this.currentUser) return false;
-    if (this.currentUser.isAdmin) return true; // Admin can vote anywhere
+    if (this.currentUser.isAdmin) return true;
     const u = this.currentUser;
     for (const r of regions) {
       if (r.type === 'global') return true;
@@ -353,64 +429,39 @@ const OMH = {
     if (!post || !post.vote) return;
     const uid = this.currentUser.username;
     if (!this.checkGeoEligibility(post.vote.regions)) {
-      toast('You are not in the eligible region for this vote.', 'error');
-      return;
+      toast('You are not in the eligible region for this vote.', 'error'); return;
     }
     const label = post.vote.options[optionIdx]?.label || '';
     post.vote.options.forEach(o => { o.voters = o.voters.filter(v => v !== uid); });
     post.vote.options[optionIdx].voters.push(uid);
-    this.save();
+    sb.from('posts').update({ vote: post.vote }).eq('id', postId);
     renderFeed();
-    if (OMH.currentPage === 'votes') renderVotesPage();
+    if (this.currentPage === 'votes') renderVotesPage();
     toast('Vote cast: ' + label, 'vote-cast', 3000);
   },
 
-  // Dynamic court quorum: scales with user count, min 5, max 51
   courtQuorum() {
-    const n = this.users.length;
-    // sqrt scaling: small communities need fewer votes, large ones more
+    const n = this.users.length || 10;
     return Math.min(51, Math.max(5, Math.round(Math.sqrt(n) * 1.5)));
   },
 
   flagPost(postId) {
     const post = this.posts.find(p => p.id === postId);
     if (!post || !this.currentUser) return;
-    // Can't flag own posts
     if (post.author === this.currentUser.username && !this.currentUser.isAdmin) {
-      toast('You cannot flag your own post.', 'error');
-      return;
+      toast('You cannot flag your own post.', 'error'); return;
     }
-    // Prevent re-flagging: block if any case (open OR resolved) exists within 30 days
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    const existingCase = this.courtCases.find(c => c.postId === postId);
-    if (existingCase) {
-      if (existingCase.status === 'open') {
-        toast('Already in Community Court.', 'info');
-        return;
-      }
-      if (existingCase.status === 'kept' && existingCase.openedAt > thirtyDaysAgo) {
-        toast('This post was reviewed and kept within the last 30 days. Cannot re-flag yet.', 'info');
-        return;
-      }
-      if (existingCase.status === 'removed') {
-        toast('This post was already removed by Community Court.', 'info');
-        return;
-      }
+    const existing = this.courtCases.find(c => c.postId === postId);
+    if (existing) {
+      if (existing.status === 'open') { toast('Already in Community Court.', 'info'); return; }
+      if (existing.status === 'removed') { toast('Already removed by Community Court.', 'info'); return; }
     }
-    const quorum = this.courtQuorum();
     const case_ = {
       id: 'case-' + Date.now(),
-      postId,
-      postContent: post.content,
-      postAuthor: post.author,
-      postCountry: post.country || '',
-      postState: post.state || '',
-      openedBy: this.currentUser.username,
-      openedAt: new Date().toISOString(),
-      keepVotes: [],
-      removeVotes: [],
-      status: 'open',
-      quorum
+      postId, postContent: post.content,
+      postAuthor: post.author, postCountry: post.country || '', postState: post.state || '',
+      openedBy: this.currentUser.username, openedAt: new Date().toISOString(),
+      keepVotes: [], removeVotes: [], status: 'open', quorum: this.courtQuorum()
     };
     this.courtCases.unshift(case_);
     this.save();
@@ -421,45 +472,29 @@ const OMH = {
   courtVote(caseId, verdict) {
     const case_ = this.courtCases.find(c => c.id === caseId);
     if (!case_ || case_.status !== 'open' || !this.currentUser) return;
-    const u = this.currentUser;
-
-    // Region lock: voter must match post's country/state
+    const u = this.currentUser, uid = u.username;
     if (case_.postState && u.state && case_.postState !== u.state) {
-      toast('Only residents of ' + case_.postState + ' can vote on this case.', 'error');
-      return;
-    } else if (case_.postCountry && u.country && !case_.postState && case_.postCountry !== u.country) {
-      toast('Only residents of ' + case_.postCountry + ' can vote on this case.', 'error');
-      return;
+      toast('Only residents of ' + case_.postState + ' can vote on this case.', 'error'); return;
     }
-
-    const uid = u.username;
     case_.keepVotes   = case_.keepVotes.filter(x => x !== uid);
     case_.removeVotes = case_.removeVotes.filter(x => x !== uid);
     if (verdict === 'keep')   case_.keepVotes.push(uid);
     if (verdict === 'remove') case_.removeVotes.push(uid);
-
-    const quorum = case_.quorum || this.courtQuorum();
     const total = case_.keepVotes.length + case_.removeVotes.length;
-    if (total >= quorum) {
+    if (total >= case_.quorum) {
       if (case_.removeVotes.length / total >= 0.75) {
         case_.status = 'removed';
         const post = this.posts.find(p => p.id === case_.postId);
-        if (post) post.removed = true;
-        this.save();
-        renderCourtPage();
-        renderFeed();
-        toast('Community Court: Post removed by jury verdict.', 'info');
-        return;
+        if (post) { post.removed = true; sb.from('posts').update({ removed: true }).eq('id', case_.postId); }
+        this.save(); renderCourtPage(); renderFeed();
+        toast('Community Court: Post removed by jury verdict.', 'info'); return;
       } else if (case_.keepVotes.length / total >= 0.75) {
         case_.status = 'kept';
-        this.save();
-        renderCourtPage();
-        toast('Community Court: Post cleared — jury voted to keep.', 'info');
-        return;
+        this.save(); renderCourtPage();
+        toast('Community Court: Post cleared — jury voted to keep.', 'info'); return;
       }
     }
-    this.save();
-    renderCourtPage();
+    this.save(); renderCourtPage();
     toast('Vote cast — ' + (verdict === 'keep' ? 'Keep' : 'Remove'), 'vote-cast', 3000);
   },
 
@@ -467,19 +502,15 @@ const OMH = {
     q = q.toLowerCase().trim();
     if (!q) return this.posts.filter(p => !p.removed);
     return this.posts.filter(p => !p.removed && (
-      p.content.toLowerCase().includes(q) ||
+      (p.content||'').toLowerCase().includes(q) ||
       p.author.toLowerCase().includes(q) ||
-      (p.tags || []).some(t => t.toLowerCase().includes(q))
+      (p.tags || []).some(t => t.toLowerCase().includes(q.replace('#','')))
     ));
   },
 
   getVoteCount(user) {
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    return this.posts.filter(p =>
-      p.author === user.username &&
-      p.vote &&
-      new Date(p.timestamp) > thirtyDaysAgo
-    ).length;
+    return this.posts.filter(p => p.author === user.username && p.vote && new Date(p.timestamp) > thirtyDaysAgo).length;
   },
 
   bookmarkPost(postId) {
@@ -487,12 +518,18 @@ const OMH = {
     const u = this.currentUser;
     if (!u.bookmarks) u.bookmarks = [];
     const idx = u.bookmarks.indexOf(postId);
-    if (idx > -1) u.bookmarks.splice(idx, 1);
-    else u.bookmarks.push(postId);
+    if (idx > -1) {
+      u.bookmarks.splice(idx, 1);
+      sb.from('bookmarks').delete().eq('username', u.username).eq('post_id', postId);
+      toast('Bookmark removed.', 'info', 2500);
+    } else {
+      u.bookmarks.push(postId);
+      sb.from('bookmarks').insert({ username: u.username, post_id: postId });
+      toast('Post bookmarked.', 'success', 2500);
+    }
     this.save();
     renderFeed();
     if (this.currentPage === 'bookmarks') renderBookmarksPage();
-    toast(idx > -1 ? 'Bookmark removed.' : 'Post bookmarked.', 'success', 2500);
   },
 
   repostPost(postId) {
@@ -502,63 +539,54 @@ const OMH = {
     const uid = this.currentUser.username;
     if (!original.reposts) original.reposts = [];
     if (original.reposts.includes(uid)) {
-      // un-repost
       original.reposts = original.reposts.filter(u => u !== uid);
       this.posts = this.posts.filter(p => !(p.isRepost && p.repostOf === postId && p.author === uid));
-      this.save(); renderFeed();
+      sb.from('posts').update({ reposts: original.reposts }).eq('id', postId);
+      sb.from('posts').delete().match({ is_repost: true, repost_of: postId, author: uid });
+      renderFeed();
       toast('Repost removed.', 'info', 2000);
       return;
     }
     original.reposts.push(uid);
     const repost = {
       id: 'rp-' + Date.now(),
-      author: uid,
-      authorName: this.currentUser.fullName,
-      content: original.content,
-      image: original.image || null,
-      vote: original.vote || null,
-      tags: original.tags || [],
-      likes: [], replies: [],
-      reposts: [],
-      timestamp: new Date().toISOString(),
-      editedAt: null,
-      city: this.currentUser.city,
-      state: this.currentUser.state,
-      country: this.currentUser.country,
-      removed: false,
-      isRepost: true,
-      repostOf: postId,
-      repostAuthor: original.authorName,
-      repostAuthorHandle: original.author
+      author: uid, authorName: this.currentUser.fullName,
+      content: original.content, image: original.image || null,
+      vote: original.vote || null, tags: original.tags || [],
+      likes: [], replies: [], reposts: [],
+      timestamp: new Date().toISOString(), editedAt: null,
+      city: this.currentUser.city, state: this.currentUser.state, country: this.currentUser.country,
+      removed: false, isRepost: true, repostOf: postId,
+      repostAuthor: original.authorName, repostAuthorHandle: original.author
     };
     this.posts.unshift(repost);
+    sb.from('posts').update({ reposts: original.reposts }).eq('id', postId);
+    sb.from('posts').insert(postToDbRow(repost));
     this.pushNotification(original.author, 'repost', uid, postId);
-    this.save(); renderFeed();
+    renderFeed();
     toast('Reposted!', 'success', 2500);
   },
 
   recordView(postId) {
     const post = this.posts.find(p => p.id === postId);
     if (!post) return;
-    if (!post.views) post.views = 0;
-    post.views++;
-    this.save();
+    post.views = (post.views || 0) + 1;
+    sb.from('posts').update({ views: post.views }).eq('id', postId);
   },
 
-  pushNotification(toUser, type, fromUser, postId) {
-    if (toUser === fromUser) return; // no self-notifs
-    this.notifications.unshift({
+  async pushNotification(toUser, type, fromUser, postId) {
+    if (toUser === fromUser) return;
+    const notif = {
       id: 'n-' + Date.now(),
-      to: toUser,
-      type, // 'like','reply','repost','quote','flag'
-      from: fromUser,
-      postId,
-      timestamp: new Date().toISOString(),
-      read: false
-    });
-    // keep last 100
+      to: toUser, type, from: fromUser,
+      postId, timestamp: new Date().toISOString(), read: false
+    };
+    this.notifications.unshift(notif);
     if (this.notifications.length > 100) this.notifications = this.notifications.slice(0, 100);
-    this.save();
+    await sb.from('notifications').insert({
+      id: notif.id, to_user: toUser, from_user: fromUser,
+      type, post_id: postId, read: false
+    });
     renderNotifBadge();
   },
 
@@ -567,28 +595,32 @@ const OMH = {
     return this.notifications.filter(n => n.to === this.currentUser.username && !n.read).length;
   },
 
-  followUser(targetUsername) {
+  async followUser(targetUsername) {
     if (!this.currentUser) { showModal('login'); return; }
     if (targetUsername === this.currentUser.username) return;
-    const target = this.users.find(u => u.username === targetUsername);
-    if (!target) return;
     if (!this.currentUser.following) this.currentUser.following = [];
-    if (!target.followers) target.followers = [];
     const already = this.currentUser.following.includes(targetUsername);
     if (already) {
       this.currentUser.following = this.currentUser.following.filter(u => u !== targetUsername);
-      target.followers = target.followers.filter(u => u !== this.currentUser.username);
       toast(`Unfollowed @${targetUsername}`, 'info', 2000);
     } else {
       this.currentUser.following.push(targetUsername);
-      target.followers.push(this.currentUser.username);
       toast(`Now following @${targetUsername}`, 'success', 2000);
     }
-    // sync current user back to users array
-    const idx = this.users.findIndex(u => u.username === this.currentUser.username);
-    if (idx > -1) this.users[idx] = this.currentUser;
     this.save();
-    // re-render whatever is visible
+    // Update both users in Supabase
+    await sb.from('users').update({ following: this.currentUser.following }).eq('username', this.currentUser.username);
+    // Update target's followers array
+    const target = await this.fetchUser(targetUsername);
+    if (target) {
+      let followers = target.followers || [];
+      if (already) followers = followers.filter(u => u !== this.currentUser.username);
+      else followers.push(this.currentUser.username);
+      await sb.from('users').update({ followers }).eq('username', targetUsername);
+      // Update local users cache
+      const idx = this.users.findIndex(u => u.username === targetUsername);
+      if (idx > -1) this.users[idx].followers = followers;
+    }
     if (this.currentPage === 'feed') renderFeed();
     if (this.currentPage === 'profile') renderProfilePage();
     renderRightPanel();
@@ -600,107 +632,109 @@ const OMH = {
   }
 };
 
-// Load data
-OMH.load();
-
-// Seed demo data
-if (OMH.posts.length === 0) {
-  OMH.posts = [
-    {
-      id:'p1', author:'civicmind', authorName:'Civic Mind',
-      content:'Just joined #OneMindHub! This is what democracy should look like — your neighborhood, your voice, your vote. No bots. No outsiders. Real results. 🗳️ #democracy #directdemocracy',
-      tags:['OneMindHub','democracy','directdemocracy'],
-      image:null, likes:['alice','bob'], replies:[], timestamp:new Date(Date.now()-3600000).toISOString(),
-      city:'Austin', state:'Texas', country:'USA', vote:null, removed:false
-    },
-    {
-      id:'p2', author:'localfocus', authorName:'Local Focus',
-      content:'Should US taxpayers fund continued military involvement in conflicts abroad? This is YOUR money — make your voice heard. Only verified US residents can vote. #taxdollars #foreignpolicy #USA',
-      tags:['taxdollars','foreignpolicy','USA'],
-      image:null, likes:['civicmind'], replies:[], timestamp:new Date(Date.now()-7200000).toISOString(),
-      city:'Denver', state:'Colorado', country:'USA',
-      vote:{
-        title:'Should US tax dollars fund military involvement abroad?',
-        description:'A direct question to American taxpayers about foreign military spending.',
-        regions:[{type:'country',value:'USA'}],
-        regionLabel:'All US residents',
-        options:[
-          {label:'❌ No — bring the money home',voters:['alice','demo']},
-          {label:'✅ Yes — global security matters',voters:['bob']},
-          {label:'🤷 Needs case-by-case review',voters:[]}
-        ],
-        closesAt:new Date(Date.now()+86400000*14).toISOString()
-      }, removed:false
-    },
-    {
-      id:'p3', author:'northernvoice', authorName:'Northern Voice',
-      content:'Should Canada invest $40B in national high-speed rail? Vancouver to Halifax. Every Canadian deserves input on this. Vote below. #Canada #infrastructure #rail',
-      tags:['Canada','infrastructure','rail'],
-      image:null, likes:[], replies:[], timestamp:new Date(Date.now()-10800000).toISOString(),
-      city:'Toronto', state:'Ontario', country:'Canada',
-      vote:{
-        title:'$40B federal investment in high-speed rail?',
-        description:'Proposed national rail corridor connecting major Canadian cities over 10 years.',
-        regions:[{type:'country',value:'Canada'}],
-        regionLabel:'All Canadians',
-        options:[
-          {label:'✅ Strongly support',voters:['northernvoice']},
-          {label:'👍 Support with conditions',voters:[]},
-          {label:'❌ Oppose — wrong priority',voters:[]},
-          {label:'🤷 Need more information',voters:[]}
-        ],
-        closesAt:new Date(Date.now()+86400000*21).toISOString()
-      }, removed:false
-    },
-    {
-      id:'p4', author:'euvoice', authorName:'EU Voice',
-      content:'Should EU member states adopt a unified digital identity system? Affects all 27 countries. Multi-region vote open to all EU residents. #EU #digitalidentity #europe',
-      tags:['EU','digitalidentity','europe'],
-      image:null, likes:[], replies:[], timestamp:new Date(Date.now()-14400000).toISOString(),
-      city:'Berlin', state:'Berlin', country:'Germany',
-      vote:{
-        title:'Should the EU adopt a unified digital identity?',
-        description:'EUDI Wallet rollout affects all 450M EU citizens. Should this be mandatory?',
-        regions:[
-          {type:'country',value:'Germany'},
-          {type:'country',value:'France'},
-          {type:'country',value:'Spain'},
-          {type:'country',value:'Italy'},
-          {type:'country',value:'Netherlands'}
-        ],
-        regionLabel:'EU Member States (5 countries)',
-        options:[
-          {label:'✅ Yes — unified is better',voters:[]},
-          {label:'❌ No — national sovereignty',voters:[]},
-          {label:'🔄 Optional opt-in only',voters:[]}
-        ],
-        closesAt:new Date(Date.now()+86400000*30).toISOString()
-      }, removed:false
-    }
-  ];
-  OMH.save();
+// Returns the correct badge HTML for a user based on their tier
+function getUserBadge(u) {
+  if (!u) return '';
+  if (u.isAdmin)   return '<span class="admin-badge">ADMIN</span>';
+  if (u.isFounder) return '<span class="badge-founder">👑 Founder</span>';
+  if (u.isPremium) return '<span class="badge-verified">⚡ Verified</span>';
+  return '';
 }
 
-if (OMH.users.length === 0) {
-  OMH.users.push({
-    username:'demo', password:'demo123', fullName:'Demo User',
-    email:'demo@example.com', city:'Austin', state:'Texas', country:'USA',
-    bio:'Testing OneMindHub — the future of direct democracy.',
-    joinDate:new Date().toISOString(), isPremium:true, isAdmin:false,
-    locationLastChanged: new Date(Date.now() - 200 * 24 * 60 * 60 * 1000).toISOString(),
-    followers:[], following:[], voteCount:0
-  });
-  // Admin user
-  OMH.users.push({
-    username:'admin', password:'admin2026!', fullName:'OneMind Admin',
-    email:'admin@onemindhub.com', city:'Vancouver', state:'British Columbia', country:'Canada',
-    bio:'Founder of OneMindHub. One human. One vote.',
-    joinDate:new Date().toISOString(), isPremium:true, isAdmin:true,
-    locationLastChanged: null,
-    followers:[], following:[], voteCount:0
-  });
-  OMH.save();
+// Returns the tier icon shown next to username in posts/profiles
+function getTierIcon(u) {
+  if (!u) return '';
+  if (u.isAdmin)   return '<span style="color:#ef4444;font-size:13px;" title="Admin">🛡️</span>';
+  if (u.isFounder) return '<span style="color:#f59e0b;font-size:13px;" title="Founder">👑</span>';
+  if (u.isPremium) return '<span style="color:#4f6ef7;font-size:13px;" title="Verified">⚡</span>';
+  return '';
 }
+function dbRowToPost(r) {
+  return {
+    id: r.id, author: r.author, authorName: r.author_name,
+    content: r.content || '', image: r.image_url,
+    streamUid: r.stream_uid || null,
+    tags: r.tags || [], likes: r.likes || [], reposts: r.reposts || [],
+    replies: [], views: r.views || 0,
+    city: r.city, state: r.state, country: r.country,
+    vote: r.vote || null,
+    isRepost: r.is_repost || false, repostOf: r.repost_of,
+    repostAuthor: r.repost_author, repostAuthorHandle: r.repost_author_handle,
+    isQuote: r.is_quote || false, quotedHandle: r.quoted_handle, quotedContent: r.quoted_content,
+    removed: r.removed || false, editedAt: r.edited_at,
+    timestamp: r.created_at
+  };
+}
+
+function postToDbRow(p) {
+  return {
+    id: p.id, author: p.author, author_name: p.authorName,
+    content: p.content, image_url: p.image || null,
+    stream_uid: p.streamUid || null,
+    tags: p.tags || [], likes: p.likes || [], reposts: p.reposts || [],
+    views: p.views || 0,
+    city: p.city, state: p.state, country: p.country,
+    vote: p.vote || null,
+    is_repost: p.isRepost || false, repost_of: p.repostOf || null,
+    repost_author: p.repostAuthor || null, repost_author_handle: p.repostAuthorHandle || null,
+    is_quote: p.isQuote || false, quoted_handle: p.quotedHandle || null, quoted_content: p.quotedContent || null,
+    removed: false, edited_at: p.editedAt || null
+  };
+}
+
+function dbRowToUser(r) {
+  return {
+    username: r.username, fullName: r.full_name, email: r.email,
+    bio: r.bio || '', avatarUrl: r.avatar_url || null,
+    bannerUrl: r.banner_url || null,
+    city: r.city, state: r.state, country: r.country,
+    isPremium: r.is_premium || false,
+    isFounder: r.is_founder || false,
+    isAdmin: r.is_admin || false,
+    blockedUsers: r.blocked_users || [],
+    following: r.following || [], followers: r.followers || [],
+    locationLastChanged: r.location_locked_until,
+    joinDate: r.join_date || r.created_at,
+    bookmarks: []
+  };
+}
+
+function userToDbRow(u) {
+  return {
+    username: u.username, full_name: u.fullName, email: u.email,
+    bio: u.bio || '', avatar_url: u.avatarUrl || null,
+    banner_url: u.bannerUrl || null,
+    city: u.city, state: u.state, country: u.country,
+    is_premium: u.isPremium || false,
+    is_founder: u.isFounder || false,
+    is_admin: u.isAdmin || false,
+    blocked_users: u.blockedUsers || [],
+    following: u.following || [], followers: u.followers || [],
+    location_locked_until: u.locationLastChanged || null,
+    join_date: u.joinDate || new Date().toISOString()
+  };
+}
+
+// ── App init ─────────────────────────────────────────────────────────────────
+async function initApp() {
+  await OMH.load();
+  renderApp();
+  // Check for Stripe redirect activation
+  const params = new URLSearchParams(window.location.search);
+  const activated = params.get('activated');
+  if (activated && OMH.currentUser) {
+    await activatePremium(activated);
+    // Clean URL so refresh doesn't re-trigger
+    window.history.replaceState({}, '', window.location.pathname);
+  } else if (activated && !OMH.currentUser) {
+    // Store it for after login
+    localStorage.setItem('omh_pending_activation', activated);
+    toast('Complete sign in to activate your membership!', 'info', 5000);
+    showModal('login');
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+}
+initApp();
 </script>
 
 <!-- TOAST -->
@@ -817,7 +851,7 @@ if (OMH.users.length === 0) {
               <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;border-top:1px solid var(--border);padding-top:10px;">
                 <div style="display:flex;gap:4px;">
                   <label style="cursor:pointer;color:var(--accent);margin:0;" title="Add image">
-                    <input type="file" id="img-upload" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none;" onchange="previewImage(event)" />
+                    <input type="file" id="img-upload" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm" style="display:none;" onchange="previewImage(event)" />
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                   </label>
                   <button onclick="addHashtagToCompose()" style="background:none;border:none;cursor:pointer;color:var(--accent);">
@@ -1152,26 +1186,26 @@ if (OMH.users.length === 0) {
   <div class="modal" style="max-width:480px;text-align:center;position:relative;">
     <div style="font-size:32px;margin-bottom:8px;">⚡</div>
     <div style="font-size:22px;font-weight:800;margin-bottom:4px;">Go Verified</div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:24px;">$8 / month — cancel any time</div>
-    <div style="display:flex;flex-direction:column;gap:10px;text-align:left;margin-bottom:24px;">
-      <div style="display:flex;gap:10px;align-items:center;"><span style="color:var(--green);">✓</span><span>Unlimited GeoVotes per month (free = 3/month)</span></div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:20px;">One human. One vote. Verified.</div>
+    <div style="display:flex;flex-direction:column;gap:10px;text-align:left;margin-bottom:20px;">
+      <div style="display:flex;gap:10px;align-items:center;"><span style="color:var(--green);">✓</span><span>Unlimited GeoVotes per month</span></div>
       <div style="display:flex;gap:10px;align-items:center;"><span style="color:var(--green);">✓</span><span>Multi-region vote support</span></div>
       <div style="display:flex;gap:10px;align-items:center;"><span style="color:var(--green);">✓</span><span>Vote analytics and result breakdowns</span></div>
       <div style="display:flex;gap:10px;align-items:center;"><span style="color:var(--green);">✓</span><span>Community Court flagging rights</span></div>
       <div style="display:flex;gap:10px;align-items:center;"><span style="color:var(--green);">✓</span><span>⚡ Verified badge on profile and posts</span></div>
       <div style="display:flex;gap:10px;align-items:center;"><span style="color:var(--green);">✓</span><span>Early access to new features</span></div>
     </div>
-    <a href="https://buy.stripe.com/6oUdRad0n2x4bJRfiG77O00" target="_blank" rel="noopener" style="display:block;width:100%;text-decoration:none;">
+
+    <!-- Pricing toggle -->
+    <div style="display:flex;gap:8px;margin-bottom:16px;background:var(--surface);border-radius:12px;padding:4px;">
+      <button id="plan-monthly-btn" onclick="selectPlan('monthly')" style="flex:1;padding:10px;border-radius:10px;border:none;cursor:pointer;font-family:'Sora',sans-serif;font-weight:700;font-size:13px;background:var(--accent);color:#fff;transition:all .2s;">Monthly — $8</button>
+      <button id="plan-yearly-btn" onclick="selectPlan('yearly')" style="flex:1;padding:10px;border-radius:10px;border:none;cursor:pointer;font-family:'Sora',sans-serif;font-weight:700;font-size:13px;background:none;color:var(--muted);transition:all .2s;">Yearly — $80 <span style="font-size:10px;color:var(--green);">Save 17%</span></button>
+    </div>
+
+    <a id="stripe-btn-link" href="https://buy.stripe.com/6oU00ke4rc7EaFNb2q77O02" target="_blank" rel="noopener" style="display:block;width:100%;text-decoration:none;">
       <button class="btn-primary" style="width:100%;padding:14px;font-size:15px;">⚡ Subscribe — $8/mo</button>
     </a>
-    <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6;text-align:center;">Secure payment via Stripe · Cancel anytime</div>
-    <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;text-align:center;">
-      <span style="font-size:11px;color:var(--muted);">Testing the platform? </span>
-      <span class="link" style="font-size:11px;" onclick="activatePremium()">Activate demo Verified</span>
-    </div>
-    <div style="margin-top:12px;padding:10px;background:var(--surface);border-radius:10px;font-size:11px;color:var(--muted);text-align:left;line-height:1.6;">
-      <strong style="color:var(--text);">💳 Stripe payment info:</strong> Payments go directly to your account. Stripe takes 2.9% + 30¢ per transaction. You keep ~$7.47 per $8 subscription.
-    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6;text-align:center;">Secure payment via Stripe · Cancel anytime · Badge activates automatically</div>
     <button data-close="premium" class="btn-ghost" style="width:100%;padding:12px;margin-top:10px;">Maybe later</button>
     <button data-close="premium" class="modal-close-btn">✕</button>
   </div>
@@ -1409,15 +1443,36 @@ function togglePostMenu(postId, e) {
 }
 
 // Auth
-function doLogin() {
+async function doLogin() {
   const id   = document.getElementById('login-id').value.trim();
   const pass = document.getElementById('login-pass').value;
   if (!id || !pass) { toast('Enter your email/username and password.', 'error'); return; }
-  const user = OMH.users.find(u => (u.email===id || u.username===id) && u.password===pass);
-  if (!user) { toast('Invalid credentials. Check your username and password.', 'error'); return; }
+
+  // Look up user by email or username
+  let query = sb.from('users').select('*');
+  if (id.includes('@')) query = query.eq('email', id);
+  else query = query.eq('username', id);
+  const { data: users, error: qErr } = await query.limit(1);
+  if (qErr) { toast('Login error: ' + qErr.message, 'error'); return; }
+  if (!users || users.length === 0) { toast('Invalid credentials.', 'error'); return; }
+
+  const dbUser = users[0];
+  // Simple password check — in production use Supabase Auth; for now match stored hash
+  if (dbUser.password_hash !== pass) { toast('Invalid credentials. Check your username and password.', 'error'); return; }
+
+  const user = dbRowToUser(dbUser);
+  // Load bookmarks
+  const { data: bm } = await sb.from('bookmarks').select('post_id').eq('username', user.username);
+  user.bookmarks = (bm || []).map(b => b.post_id);
   OMH.login(user);
   closeModal('login');
   toast(`Welcome back, ${user.fullName.split(' ')[0]}! 👋`, 'success');
+  // Check for pending activation from Stripe redirect
+  const pending = localStorage.getItem('omh_pending_activation');
+  if (pending) {
+    localStorage.removeItem('omh_pending_activation');
+    await activatePremium(pending);
+  }
 }
 
 // ── Anti-abuse: device fingerprint + IP soft limits ─────────────────────────
@@ -1493,7 +1548,7 @@ function recordNewAccount(username) {
 }
 // ────────────────────────────────────────────────────────────────────────────
 
-function doSignup() {
+async function doSignup() {
   const name     = document.getElementById('su-name').value.trim();
   const username = document.getElementById('su-username').value.trim().replace('@','').toLowerCase();
   const email    = document.getElementById('su-email').value.trim().toLowerCase();
@@ -1511,30 +1566,44 @@ function doSignup() {
   if (!/[0-9]/.test(pass)) { toast('Password needs at least one number.', 'error'); return; }
   if (!/[^A-Za-z0-9]/.test(pass)) { toast('Password needs at least one special character (!@#$%…).', 'error'); return; }
   if (!/^[a-z0-9_]{3,20}$/.test(username)) { toast('Username: 3-20 characters, letters/numbers/underscores only.', 'error'); return; }
-  if (OMH.users.find(u => u.username===username)) { toast('Username already taken.', 'error'); return; }
-  if (OMH.users.find(u => u.email===email)) { toast('Email already registered.', 'error'); return; }
 
-  // Soft abuse check: device fingerprint + location token
-  const abuseCheck = checkAbuseSignals();
-  if (abuseCheck.blocked) {
-    toast(abuseCheck.reason, 'error');
-    return;
+  // Check uniqueness
+  const { data: existing } = await sb.from('users')
+    .select('username,email')
+    .or(`username.eq.${username},email.eq.${email}`)
+    .limit(1);
+  if (existing && existing.length > 0) {
+    if (existing[0].username === username) { toast('Username already taken.', 'error'); return; }
+    toast('Email already registered.', 'error'); return;
   }
 
   const user = {
-    username, password: pass, fullName: name, email,
+    username, fullName: name, email,
     country, state, city,
     bio: '', joinDate: new Date().toISOString(),
     isPremium: false, isAdmin: false,
     locationLastChanged: new Date().toISOString(),
-    followers: [], following: [], voteCount: 0
+    followers: [], following: [], bookmarks: []
   };
-  OMH.users.push(user);
-  OMH.save();
+
+  // Insert into Supabase (store password as plain for now — upgrade to Supabase Auth later)
+  const insertData = {
+    ...userToDbRow(user),
+    password_hash: pass
+  };
+  const { data: insertResult, error } = await sb.from('users').insert(insertData).select();
+  if (error) { toast('Sign-up failed: ' + (error.message || error.code || JSON.stringify(error)), 'error'); return; }
+
   recordNewAccount(username);
   OMH.login(user);
   closeModal('signup');
   toast(`Welcome to OneMindHub, ${name.split(' ')[0]}! 🎉`, 'success');
+  // Check for pending activation from Stripe redirect
+  const pending = localStorage.getItem('omh_pending_activation');
+  if (pending) {
+    localStorage.removeItem('omh_pending_activation');
+    setTimeout(() => activatePremium(pending), 1000);
+  }
 }
 
 function doLogout() {
@@ -1542,30 +1611,186 @@ function doLogout() {
   toast('Signed out successfully.', 'info');
 }
 
-function activatePremium() {
+function activatePremium(tier) {
   if (!OMH.currentUser) { toast('Please sign in first.', 'error'); return; }
-  OMH.currentUser.isPremium = true;
+  tier = tier || 'verified';
+  if (tier === 'founder') {
+    OMH.currentUser.isFounder = true;
+    OMH.currentUser.isPremium = true;
+    sb.from('users').update({ is_founder: true, is_premium: true }).eq('username', OMH.currentUser.username);
+    toast('👑 Founder status activated! Thank you for believing in OneMind.', 'success', 5000);
+  } else {
+    OMH.currentUser.isPremium = true;
+    sb.from('users').update({ is_premium: true }).eq('username', OMH.currentUser.username);
+    toast('⚡ Verified activated! Enjoy unlimited GeoVotes.', 'success');
+  }
   OMH.save();
   closeModal('premium');
-  toast('⚡ Verified activated! Enjoy unlimited GeoVotes.', 'success');
   renderSidebar();
   renderProfilePage();
+  renderSettings();
+}
+
+// Stripe payment links
+const STRIPE_LINKS = {
+  monthly: 'https://buy.stripe.com/6oU00ke4rc7EaFNb2q77O02',
+  yearly:  'https://buy.stripe.com/6oUfZi9ObgnU0198Ui77O01'
+};
+
+function selectPlan(plan) {
+  const monthlyBtn = document.getElementById('plan-monthly-btn');
+  const yearlyBtn = document.getElementById('plan-yearly-btn');
+  const link = document.getElementById('stripe-btn-link');
+  const btn = link?.querySelector('button');
+  if (plan === 'monthly') {
+    if (monthlyBtn) { monthlyBtn.style.background = 'var(--accent)'; monthlyBtn.style.color = '#fff'; }
+    if (yearlyBtn)  { yearlyBtn.style.background = 'none'; yearlyBtn.style.color = 'var(--muted)'; }
+    if (link) link.href = STRIPE_LINKS.monthly;
+    if (btn) btn.textContent = '⚡ Subscribe — $8/mo';
+  } else {
+    if (yearlyBtn)  { yearlyBtn.style.background = 'var(--accent)'; yearlyBtn.style.color = '#fff'; }
+    if (monthlyBtn) { monthlyBtn.style.background = 'none'; monthlyBtn.style.color = 'var(--muted)'; }
+    if (link) link.href = STRIPE_LINKS.yearly;
+    if (btn) btn.textContent = '⚡ Subscribe — $80/yr';
+  }
+}
+
+async function redeemActivationCode() {
+  const code = document.getElementById('activation-code-input')?.value.trim().toUpperCase();
+  if (!code) { toast('Enter your activation code.', 'error'); return; }
+  if (!OMH.currentUser) { toast('Please sign in first.', 'error'); return; }
+  const { data, error } = await sb
+    .from('activation_codes')
+    .select('*')
+    .eq('code', code)
+    .eq('used', false)
+    .single();
+  if (error || !data) { toast('Invalid or already used code. Check your email.', 'error'); return; }
+  await sb.from('activation_codes').update({
+    used: true, used_by: OMH.currentUser.username, used_at: new Date().toISOString()
+  }).eq('code', code);
+  activatePremium(data.plan);
 }
 
 // Image
+// Video init via Netlify serverless function (keeps secrets server-side)
+async function initVideoUpload(size, name) {
+  const res = await fetch('/.netlify/functions/init-video', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ size, name: name || 'video.mp4' })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.error) throw new Error('Stream init failed: ' + (data.error || res.status));
+  if (!data.uploadUrl) throw new Error('No upload URL returned from Stream');
+  return data;
+}
+
+// Direct Supabase upload for images — no worker needed
+async function uploadImageDirect(file) {
+  if (file.size > 10 * 1024 * 1024) throw new Error('Image too large (max 10MB)');
+  const ext = (file.name || 'img.jpg').split('.').pop().toLowerCase();
+  const filename = 'uploads/' + Date.now() + '-' + Math.random().toString(36).slice(2) + '.' + ext;
+  const { data, error } = await sb.storage.from('Images').upload(filename, file, {
+    contentType: file.type,
+    upsert: true
+  });
+  if (error) throw new Error('Image upload failed: ' + error.message);
+  const { data: { publicUrl } } = sb.storage.from('Images').getPublicUrl(filename);
+  return publicUrl;
+}
+
+const VIDEO_TYPES = ['video/mp4','video/quicktime','video/webm','video/mov'];
+const IMAGE_TYPES = ['image/jpeg','image/jpg','image/png','image/gif','image/webp'];
+
+async function uploadToBackblaze(file) {
+  const isVideo = VIDEO_TYPES.includes(file.type);
+  const isImage = IMAGE_TYPES.includes(file.type);
+  if (!isVideo && !isImage) throw new Error('File type not supported');
+
+  if (isVideo) {
+    // Step 1: Get TUS upload URL from worker
+    let uploadUrl, streamUid;
+    const initData = await initVideoUpload(file.size, file.name);
+    uploadUrl = initData.uploadUrl;
+    streamUid = initData.streamUid;
+
+    // Step 2: Upload file directly to Stream TUS endpoint
+    const uploadRes = await fetch(uploadUrl, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/offset+octet-stream',
+        'Tus-Resumable': '1.0.0',
+        'Upload-Offset': '0',
+      },
+      body: file
+    });
+
+    if (!uploadRes.ok && uploadRes.status !== 204) {
+      throw new Error('Video upload to Stream failed: status ' + uploadRes.status);
+    }
+
+    window._lastUploadMeta = {
+      isVideo: true, streamUid,
+      embedUrl: `https://iframe.videodelivery.net/${streamUid}`,
+      thumbnail: `https://videodelivery.net/${streamUid}/thumbnails/thumbnail.jpg`
+    };
+    return `https://videodelivery.net/${streamUid}/manifest/video.m3u8`;
+
+  } else {
+    // Images upload directly to Supabase Storage from browser
+    const url = await uploadImageDirect(file);
+    window._lastUploadMeta = { isVideo: false };
+    return url;
+  }
+}
+
 let pendingImage = null;
-function previewImage(e) {
+
+async function previewImage(e) {
   const file = e.target.files[0];
   if (!file) return;
-  if (file.size > 5 * 1024 * 1024) { toast('Image must be under 5MB.', 'error'); return; }
-  const reader = new FileReader();
-  reader.onload = ev => {
-    pendingImage = ev.target.result;
-    document.getElementById('img-preview').src = pendingImage;
-    document.getElementById('img-preview-wrap').style.display = 'inline-block';
-  };
-  reader.readAsDataURL(file);
+  const isVideo = VIDEO_TYPES.includes(file.type);
+  if (!IMAGE_TYPES.includes(file.type) && !VIDEO_TYPES.includes(file.type)) {
+    toast('File type not supported.', 'error'); return;
+  }
+  if (!isVideo && file.size > 10 * 1024 * 1024) { toast('Image must be under 10MB.', 'error'); return; }
+  // Show local preview immediately
+  const wrap = document.getElementById('img-preview-wrap');
+  const preview = document.getElementById('img-preview');
+  if (isVideo) {
+    // Replace img with video element for preview
+    if (preview) preview.style.display = 'none';
+    let vid = document.getElementById('vid-preview');
+    if (!vid) {
+      vid = document.createElement('video');
+      vid.id = 'vid-preview';
+      vid.controls = true;
+      vid.style.cssText = 'max-width:100%;max-height:300px;border-radius:12px;margin-top:8px;';
+      wrap?.parentNode?.insertBefore(vid, wrap);
+    }
+    vid.src = URL.createObjectURL(file);
+    vid.style.display = 'block';
+  } else {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      if (preview) { preview.src = ev.target.result; preview.style.display = 'block'; }
+      const vid = document.getElementById('vid-preview');
+      if (vid) vid.style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+  }
+  if (wrap) wrap.style.display = 'inline-block';
+  const t = toast(`Uploading ${isVideo?'video':'image'}...`, 'info', 120000);
+  try {
+    pendingImage = await uploadToBackblaze(file);
+    toast(`${isVideo?'Video':'Image'} uploaded! ✓`, 'success', 2000);
+  } catch (err) {
+    toast('Upload failed: ' + err.message, 'error');
+    removeImage();
+  }
 }
+
 function removeImage() {
   pendingImage = null;
   document.getElementById('img-preview-wrap').style.display = 'none';
@@ -1799,7 +2024,7 @@ function skipGpsVote() {
 }
 
 // Post submission
-function submitPost() {
+async function submitPost() {
   if (!OMH.currentUser) { showModal('login'); return; }
   const content = document.getElementById('compose-text').value.trim();
   if (!content && !pendingImage && !pendingVote) { toast('Write something or attach a GeoVote first.', 'error'); return; }
@@ -1812,6 +2037,7 @@ function submitPost() {
     authorName: OMH.currentUser.fullName,
     content, tags,
     image: pendingImage || null,
+    streamUid: (window._lastUploadMeta?.isVideo && window._lastUploadMeta?.streamUid) ? window._lastUploadMeta.streamUid : null,
     likes: [], replies: [], reposts: [],
     timestamp: new Date().toISOString(),
     editedAt: null,
@@ -1821,10 +2047,16 @@ function submitPost() {
     vote: pendingVote || null,
     removed: false
   };
+  window._lastUploadMeta = null;
 
-  OMH.addPost(post);
+  // Optimistically add to local feed
+  OMH.posts.unshift(post);
 
-  // Clear compose field immediately so it feels responsive
+  // Persist to Supabase
+  const { error: postError } = await sb.from('posts').insert(postToDbRow(post));
+  if (postError) console.error('Post insert error:', postError);
+
+  // Clear compose
   const ta = document.getElementById('compose-text');
   if (ta) { ta.value = ''; ta.style.height = 'auto'; }
   const cc = document.getElementById('char-count');
@@ -2001,6 +2233,7 @@ function renderContent(text) {
   return text
     .replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/#(\w+)/g, '<span style="color:var(--accent);cursor:pointer;" onclick="handleSearch(\'#$1\')">#$1</span>')
+    .replace(/\$([A-Za-z]{1,6})/g, '<span style="color:#10b981;cursor:pointer;font-weight:600;" onclick="handleSearch(\'\$$1\')">\$$1</span>')
     .replace(/@(\w+)/g, '<span style="color:var(--accent);">@$1</span>');
 }
 
@@ -2029,11 +2262,12 @@ function renderSidebar() {
     loc.innerHTML = `📍 ${cleanLoc(u.city)}, ${cleanLoc(u.state)}<br>${cleanLoc(u.country)}${lockDate && !OMH.canChangeLocation() ? `<br><span style="font-size:10px;color:var(--amber);">🔒 Location locked until ${lockDate.toLocaleDateString()}</span>` : ''}`;
     userEl.innerHTML = `
       <div style="display:flex;align-items:center;gap:10px;">
-        <div class="avatar" style="width:36px;height:36px;font-size:13px;flex-shrink:0;background:${u.avatar?'#111':avatarColor(u.username)};overflow:hidden;">${u.avatar?`<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`:initials(u.fullName)}</div>
+        <div class="avatar" style="width:36px;height:36px;font-size:13px;flex-shrink:0;background:${(u.avatarUrl||u.avatar)?'#111':avatarColor(u.username)};overflow:hidden;">${(u.avatarUrl||u.avatar)?`<img src="${u.avatarUrl||u.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`:initials(u.fullName)}</div>
         <div style="flex:1;min-width:0;">
           <div style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
             ${u.fullName.length>16?u.fullName.split(' ')[0]:u.fullName}
             ${u.isPremium?'<span class="premium-badge">PRO</span>':''}
+            ${u.isFounder?'<span class="badge-founder">👑</span>':''}
             ${u.isAdmin?'<span class="admin-badge">ADMIN</span>':''}
           </div>
           <div style="font-size:11px;color:var(--muted);">@${u.username}</div>
@@ -2048,8 +2282,9 @@ function renderSidebar() {
     if (composePrompt) composePrompt.style.display = 'none';
     const ca = document.getElementById('compose-avatar');
     if (ca) {
-      if (u.avatar) {
-        ca.innerHTML = `<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`;
+      const av = u.avatarUrl || u.avatar;
+      if (av) {
+        ca.innerHTML = `<img src="${av}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`;
         ca.style.background = '#111';
         ca.textContent = '';
       } else {
@@ -2186,11 +2421,11 @@ function renderPost(post) {
     <div class="post-card" id="post-${post.id}" style="position:relative;">
       ${repostBanner}
       <div style="display:flex;gap:12px;">
-        <div class="avatar" style="background:${avatarColor(post.isRepost ? post.repostAuthorHandle : post.author)};cursor:pointer;flex-shrink:0;" onclick="viewUserProfile('${post.isRepost ? post.repostAuthorHandle : post.author}')">${initials(post.isRepost ? post.repostAuthor : post.authorName)}</div>
+        ${(() => { const postAuthorKey = post.isRepost ? post.repostAuthorHandle : post.author; const postAuthorUser = OMH.users.find(u => u.username === postAuthorKey); const postAuthorAvatar = postAuthorUser?.avatarUrl || postAuthorUser?.avatar || (OMH.currentUser?.username === postAuthorKey ? (OMH.currentUser?.avatarUrl || OMH.currentUser?.avatar) : null); return `<div class="avatar" style="background:${postAuthorAvatar?'#111':avatarColor(postAuthorKey)};cursor:pointer;flex-shrink:0;overflow:hidden;" onclick="viewUserProfile('${postAuthorKey}')">${postAuthorAvatar ? `<img src="${postAuthorAvatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />` : initials(post.isRepost ? post.repostAuthor : post.authorName)}</div>`; })()}
         <div style="flex:1;min-width:0;">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding-right:28px;">
             <span style="font-weight:700;font-size:14px;cursor:pointer;" onclick="viewUserProfile('${post.isRepost ? post.repostAuthorHandle : post.author}')">${post.isRepost ? post.repostAuthor : post.authorName}</span>
-            ${OMH.users.find(u=>u.username===(post.isRepost ? post.repostAuthorHandle : post.author))?.isPremium ? '<span style="color:var(--accent);font-size:12px;" title="Verified">⚡</span>' : ''}
+            ${getTierIcon(OMH.users.find(u=>u.username===(post.isRepost ? post.repostAuthorHandle : post.author)))}
             ${OMH.users.find(u=>u.username===(post.isRepost ? post.repostAuthorHandle : post.author))?.isAdmin ? '<span class="admin-badge" style="font-size:9px;">ADMIN</span>' : ''}
             <span style="color:var(--muted);font-size:13px;cursor:pointer;" onclick="viewUserProfile('${post.isRepost ? post.repostAuthorHandle : post.author}')">@${post.isRepost ? post.repostAuthorHandle : post.author}</span>
             <span style="color:var(--muted);font-size:12px;">·</span>
@@ -2201,7 +2436,15 @@ function renderPost(post) {
             ${showFollowBtn ? `<button onclick="OMH.followUser('${post.author}')" style="background:${isFollowingAuthor?'transparent':'rgba(79,110,247,.15)'};color:${isFollowingAuthor?'var(--muted)':'var(--accent)'};border:1px solid ${isFollowingAuthor?'var(--border)':'rgba(79,110,247,.4)'};border-radius:20px;font-size:11px;font-weight:600;padding:2px 10px;cursor:pointer;font-family:'Sora',sans-serif;transition:all .15s;" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">${isFollowingAuthor ? 'Following' : '+ Follow'}</button>` : ''}
           </div>
           <div style="margin-top:6px;font-size:15px;line-height:1.55;word-break:break-word;">${renderContent(post.content)}</div>
-          ${post.image ? `<img class="post-img" src="${post.image}" alt="post" loading="lazy" />` : ''}
+          ${post.image ? (
+            post.streamUid
+              ? `<div style="position:relative;padding-top:56.25%;margin-top:12px;border-radius:12px;overflow:hidden;border:1px solid var(--border);">
+                  <iframe src="https://iframe.videodelivery.net/${post.streamUid}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen="true"></iframe>
+                </div>`
+              : post.image.match(/\.(mp4|webm|mov)(\?|$)/i)
+                ? `<video controls style="width:100%;border-radius:12px;margin-top:12px;max-height:400px;border:1px solid var(--border);" src="${post.image}"></video>`
+                : `<img class="post-img" src="${post.image}" alt="post" loading="lazy" />`
+          ) : ''}
           ${quotedBlock}
           ${voteHtml}
           ${repliesHtml}
@@ -2528,11 +2771,16 @@ function renderProfilePage() {
   const viewer = OMH.currentUser;
 
   el.innerHTML = `
-    <div class="profile-banner"></div>
+    <div class="profile-banner" style="${u.bannerUrl ? `background-image:url('${u.bannerUrl}');background-size:cover;background-position:center;` : ''}position:relative;">
+      ${isOwnProfile ? `<button onclick="triggerBannerUpload()" title="Change banner" style="position:absolute;top:10px;right:10px;background:rgba(0,0,0,.5);border:none;cursor:pointer;color:#fff;border-radius:8px;padding:6px 10px;font-size:11px;font-family:'Sora',sans-serif;display:flex;align-items:center;gap:5px;backdrop-filter:blur(4px);">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        Change banner
+      </button>` : ''}
+    </div>
     <div style="position:relative;padding:0 20px;margin-top:-20px;">
       <div style="position:relative;display:inline-block;margin-bottom:0;">
-        <div class="profile-avatar-large" style="background:${u.avatar?'#111':avatarColor(u.username)};">
-          ${u.avatar ? `<img src="${u.avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" />` : initials(u.fullName)}
+        <div class="profile-avatar-large" style="background:${(u.avatarUrl||u.avatar)?'#111':avatarColor(u.username)};">
+          ${(u.avatarUrl||u.avatar) ? `<img src="${u.avatarUrl||u.avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" />` : initials(u.fullName)}
         </div>
         ${isOwnProfile ? `<button onclick="triggerAvatarUpload()" title="Change profile photo" style="position:absolute;bottom:0px;left:56px;background:var(--accent);border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:2px solid var(--bg);z-index:2;padding:0;">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -2543,14 +2791,15 @@ function renderProfilePage() {
           <div>
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;flex-wrap:wrap;">
               <span style="font-size:20px;font-weight:800;">${u.fullName}</span>
-              ${u.isPremium?'<span class="premium-badge">PRO</span>':''}
+              ${getUserBadge(u)}
               ${u.isAdmin?'<span class="admin-badge">ADMIN</span>':''}
             </div>
             <div style="color:var(--muted);font-size:14px;margin-bottom:8px;">@${u.username}</div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding-top:4px;">
             ${isOwnProfile ? `
-              ${!u.isPremium ? `<button class="btn-primary" onclick="showModal('premium')" style="font-size:13px;padding:8px 16px;">⚡ Go Verified — $8/mo</button>` : ''}
+              <button class="btn-primary" onclick="showModal('compose')" style="font-size:13px;padding:8px 16px;">✏️ New Post</button>
+              ${!u.isPremium && !u.isFounder ? `<button onclick="showModal('premium')" style="background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:12px;font-size:13px;font-weight:600;padding:8px 16px;cursor:pointer;font-family:'Sora',sans-serif;">⚡ Go Verified</button>` : ''}
               <button class="btn-ghost" onclick="navigate('settings')" style="font-size:13px;padding:8px 16px;">Edit Profile</button>
             ` : viewer ? `
               <button onclick="OMH.followUser('${u.username}')" style="background:${isFollowing?'transparent':'var(--accent)'};color:${isFollowing?'var(--text)':'#fff'};border:1px solid ${isFollowing?'var(--border)':'var(--accent)'};border-radius:12px;font-size:13px;font-weight:600;padding:8px 20px;cursor:pointer;font-family:'Sora',sans-serif;transition:all .2s;">${isFollowing?'Following':'+ Follow'}</button>
@@ -2823,13 +3072,14 @@ function renderSettings() {
   const u = OMH.currentUser;
   const canChange = OMH.canChangeLocation();
   const lockDate = OMH.locationUnlockDate();
+  const avatarSrc = u.avatarUrl || u.avatar || null;
   el.innerHTML = `
     <div class="settings-section">
       <div style="font-size:15px;font-weight:700;margin-bottom:16px;">Profile</div>
       <div style="display:flex;flex-direction:column;gap:12px;">
         <div style="display:flex;align-items:center;gap:14px;">
-          <div style="width:56px;height:56px;border-radius:50%;background:${u.avatar?'#111':avatarColor(u.username)};overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;color:#fff;">
-            ${u.avatar?`<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;" />`:(u.fullName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase())}
+          <div style="width:56px;height:56px;border-radius:50%;background:${avatarSrc?'#111':avatarColor(u.username)};overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;color:#fff;">
+            ${avatarSrc?`<img src="${avatarSrc}" style="width:100%;height:100%;object-fit:cover;" />`:(u.fullName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase())}
           </div>
           <button onclick="triggerAvatarUpload()" class="btn-ghost" style="font-size:13px;padding:8px 16px;">📷 Change Photo</button>
         </div>
@@ -2840,15 +3090,38 @@ function renderSettings() {
     </div>
 
     <div class="settings-section">
+      <div style="font-size:15px;font-weight:700;margin-bottom:16px;">Account</div>
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div><label>Email</label><input class="input-field" id="set-email" value="${u.email}" /></div>
+        <div><label>New Password <span style="color:var(--muted);font-weight:400;font-size:11px;">(leave blank to keep current)</span></label><input class="input-field" id="set-pass-new" type="password" placeholder="New password" /></div>
+        <div><label>Confirm New Password</label><input class="input-field" id="set-pass-confirm" type="password" placeholder="Confirm new password" /></div>
+        <button class="btn-primary" onclick="saveAccount()" style="align-self:flex-start;padding:8px 20px;font-size:13px;">Save Account</button>
+      </div>
+      <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+        <div class="settings-row">
+          <span style="font-size:14px;">Username</span>
+          <span style="font-size:13px;color:var(--muted);">@${u.username}</span>
+        </div>
+        <div class="settings-row">
+          <span style="font-size:14px;">Member since</span>
+          <span style="font-size:13px;color:var(--muted);">${new Date(u.joinDate).toLocaleDateString()}</span>
+        </div>
+        <div style="margin-top:16px;">
+          <button class="btn-danger" onclick="if(confirm('Sign out?'))doLogout()" style="font-size:13px;padding:8px 20px;">Sign Out</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section">
       <div style="font-size:15px;font-weight:700;margin-bottom:4px;">📍 Location</div>
       <div style="font-size:13px;color:var(--muted);margin-bottom:16px;">Location determines your voting eligibility. Can only be changed every 6 months.</div>
       ${!canChange ? `
         <div class="lock-warning">🔒 Your location is locked until <strong>${lockDate?.toLocaleDateString()}</strong>. This prevents gaming of geo-restricted votes.</div>
       ` : `
         <div style="display:flex;flex-direction:column;gap:12px;">
-          <div><label>Country</label><input class="input-field" id="set-country" value="${u.country}" ${!canChange?'disabled':''} /></div>
-          <div><label>State / Province</label><input class="input-field" id="set-state" value="${u.state}" ${!canChange?'disabled':''} /></div>
-          <div><label>City</label><input class="input-field" id="set-city" value="${u.city}" ${!canChange?'disabled':''} /></div>
+          <div><label>Country</label><input class="input-field" id="set-country" value="${u.country}" /></div>
+          <div><label>State / Province</label><input class="input-field" id="set-state" value="${u.state}" /></div>
+          <div><label>City</label><input class="input-field" id="set-city" value="${u.city}" /></div>
           <div class="early-notice">After changing location, it will be locked for 6 months.</div>
           <button class="btn-primary" onclick="saveLocation()" style="align-self:flex-start;padding:8px 20px;font-size:13px;">Update Location</button>
         </div>
@@ -2859,37 +3132,17 @@ function renderSettings() {
       <div style="font-size:15px;font-weight:700;margin-bottom:16px;">Subscription</div>
       <div style="display:flex;align-items:center;justify-content:space-between;">
         <div>
-          <div style="font-size:14px;font-weight:600;">${u.isPremium ? '⚡ Verified (Premium)' : 'Free Account'}</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:2px;">${u.isPremium ? 'Unlimited votes · All features' : '3 votes/month · Basic features'}</div>
+          <div style="font-size:14px;font-weight:600;">${u.isFounder ? '👑 Founder' : u.isPremium ? '⚡ Verified (Premium)' : 'Free Account'}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px;">${u.isFounder ? 'Lifetime supporter · All features · Special badge' : u.isPremium ? 'Unlimited votes · All features' : '3 votes/month · Basic features'}</div>
         </div>
-        ${!u.isPremium ? `<button class="btn-primary" onclick="showModal('premium')" style="font-size:13px;padding:8px 16px;">Upgrade</button>` : '<span style="color:var(--green);font-size:13px;">Active ✓</span>'}
-      </div>
-    </div>
-
-    <div class="settings-section">
-      <div style="font-size:15px;font-weight:700;margin-bottom:16px;">Account</div>
-      <div class="settings-row">
-        <span style="font-size:14px;">Email</span>
-        <span style="font-size:13px;color:var(--muted);">${u.email}</span>
-      </div>
-      <div class="settings-row">
-        <span style="font-size:14px;">Username</span>
-        <span style="font-size:13px;color:var(--muted);">@${u.username}</span>
-      </div>
-      <div class="settings-row">
-        <span style="font-size:14px;">Member since</span>
-        <span style="font-size:13px;color:var(--muted);">${new Date(u.joinDate).toLocaleDateString()}</span>
-      </div>
-      <div style="margin-top:16px;">
-        <button class="btn-danger" onclick="if(confirm('Sign out?'))doLogout()" style="font-size:13px;padding:8px 20px;">Sign Out</button>
+        ${!u.isPremium && !u.isFounder ? `<button class="btn-primary" onclick="showModal('premium')" style="font-size:13px;padding:8px 16px;">Upgrade</button>` : '<span style="color:var(--green);font-size:13px;">Active ✓</span>'}
       </div>
     </div>
 
     <div class="settings-section">
       <div style="font-size:15px;font-weight:700;margin-bottom:12px;">Transparency</div>
       <div style="font-size:13px;color:var(--muted);line-height:1.7;">
-        OneMind stores your data locally in your browser (localStorage). No server. No tracking. No behavioral analytics.<br><br>
-        <strong style="color:var(--text);">What we store:</strong> Your account info, posts, and votes — locally on your device only in this prototype.<br><br>
+        OneMindHub stores your data in a secure cloud database. Your session is kept locally in your browser. No behavioral analytics or ad tracking.<br><br>
         <strong style="color:var(--text);">What we never do:</strong> Sell your data, track your behavior, log IP addresses, or share your information with anyone.<br><br>
         <span class="link" onclick="alert('OneMind is fully open source. View the code, audit the algorithm, verify the vote counts. Nothing is hidden.')">View open source code →</span>
       </div>
@@ -2903,12 +3156,38 @@ function saveProfile() {
   OMH.currentUser.fullName = name;
   OMH.currentUser.bio = bio;
   OMH.save();
+  sb.from('users').update({ full_name: name, bio }).eq('username', OMH.currentUser.username);
   toast('Profile saved!', 'success');
   renderSidebar();
 }
 
+async function saveAccount() {
+  const email = document.getElementById('set-email')?.value.trim().toLowerCase();
+  const newPass = document.getElementById('set-pass-new')?.value;
+  const confirmPass = document.getElementById('set-pass-confirm')?.value;
+  if (!email) { toast('Email cannot be empty.', 'error'); return; }
+  if (newPass && newPass.length < 8) { toast('Password must be at least 8 characters.', 'error'); return; }
+  if (newPass && newPass !== confirmPass) { toast('Passwords do not match.', 'error'); return; }
+  if (newPass) {
+    if (!/[A-Z]/.test(newPass)) { toast('Password needs an uppercase letter.', 'error'); return; }
+    if (!/[0-9]/.test(newPass)) { toast('Password needs a number.', 'error'); return; }
+    if (!/[^A-Za-z0-9]/.test(newPass)) { toast('Password needs a special character.', 'error'); return; }
+  }
+  const updates = { email };
+  if (newPass) updates.password_hash = newPass;
+  const { error } = await sb.from('users').update(updates).eq('username', OMH.currentUser.username);
+  if (error) { toast('Save failed: ' + error.message, 'error'); return; }
+  OMH.currentUser.email = email;
+  OMH.save();
+  toast('Account updated!', 'success');
+  // Clear password fields
+  const p1 = document.getElementById('set-pass-new');
+  const p2 = document.getElementById('set-pass-confirm');
+  if (p1) p1.value = '';
+  if (p2) p2.value = '';
+}
+
 function saveLocation() {
-  if (!OMH.canChangeLocation()) { toast('Location is locked. Cannot change yet.', 'error'); return; }
   const country = document.getElementById('set-country')?.value.trim();
   const state   = document.getElementById('set-state')?.value.trim();
   const city    = document.getElementById('set-city')?.value.trim();
@@ -2918,6 +3197,10 @@ function saveLocation() {
   OMH.currentUser.city = city;
   OMH.currentUser.locationLastChanged = new Date().toISOString();
   OMH.save();
+  sb.from('users').update({
+    country, state, city,
+    location_locked_until: OMH.currentUser.locationLastChanged
+  }).eq('username', OMH.currentUser.username);
   toast('Location updated! Locked for 6 months.', 'success');
   renderSidebar();
   renderSettings();
@@ -2971,8 +3254,9 @@ function openComposeModal() {
   const av = document.getElementById('compose-modal-avatar');
   if (av && OMH.currentUser) {
     const u = OMH.currentUser;
-    if (u.avatar) {
-      av.innerHTML = '<img src="'+u.avatar+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />';
+    const avatarSrc = u.avatarUrl || u.avatar;
+    if (avatarSrc) {
+      av.innerHTML = '<img src="'+avatarSrc+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />';
       av.style.background = '#111';
     } else {
       av.textContent = initials(u.fullName);
@@ -2982,19 +3266,28 @@ function openComposeModal() {
   showModal('compose');
 }
 
-function previewComposeModalImage(e) {
+async function previewComposeModalImage(e) {
   const file = e.target.files[0];
   if (!file) return;
-  if (file.size > 5 * 1024 * 1024) { toast('Image must be under 5MB.', 'error'); return; }
+  const isVideo = VIDEO_TYPES.includes(file.type);
+  const maxSize = isVideo ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+  if (file.size > maxSize) { toast(`${isVideo?'Video':'Image'} must be under ${isVideo?'50MB':'10MB'}.`, 'error'); return; }
   const reader = new FileReader();
   reader.onload = function(ev) {
-    composeModalImage = ev.target.result;
     const img = document.getElementById('compose-modal-img');
     const wrap = document.getElementById('compose-modal-img-wrap');
-    if (img) img.src = composeModalImage;
+    if (img) { img.src = ev.target.result; img.style.display = isVideo ? 'none' : 'block'; }
     if (wrap) wrap.style.display = 'block';
   };
   reader.readAsDataURL(file);
+  toast(`Uploading ${isVideo?'video':'image'}...`, 'info', 120000);
+  try {
+    composeModalImage = await uploadToBackblaze(file);
+    toast(`${isVideo?'Video':'Image'} uploaded! ✓`, 'success', 2000);
+  } catch (err) {
+    toast('Upload failed: ' + err.message, 'error');
+    removeComposeModalImage();
+  }
 }
 
 function removeComposeModalImage() {
@@ -3019,7 +3312,7 @@ function removePendingVote() {
   if (btn) { btn.textContent = '🗳️ GeoVote'; btn.removeAttribute('style'); }
 }
 
-function submitComposeModal() {
+async function submitComposeModal() {
   if (!OMH.currentUser) return;
   const ta = document.getElementById('compose-modal-text');
   const text = ta ? ta.value.trim() : '';
@@ -3032,7 +3325,7 @@ function submitComposeModal() {
     authorName: OMH.currentUser.fullName,
     content: text, tags: tags,
     image: composeModalImage || null,
-    likes: [], replies: [],
+    likes: [], replies: [], reposts: [],
     timestamp: new Date().toISOString(),
     editedAt: null,
     city: OMH.currentUser.city,
@@ -3041,13 +3334,12 @@ function submitComposeModal() {
     vote: pendingVote || null,
     removed: false
   };
-  OMH.addPost(post);
+  OMH.posts.unshift(post);
+  sb.from('posts').insert(postToDbRow(post));
   pendingVote = null;
   composeModalImage = null;
-  // Close modal immediately — feels instant like X
   closeModal('compose');
   renderFeed();
-  // Small delay so toast appears after modal is gone
   setTimeout(() => toast('Your post was sent.', 'success', 3000), 80);
 }
 // ═══ END COMPOSE MODAL ═══
@@ -3058,23 +3350,49 @@ function triggerAvatarUpload() {
   if (input) { input.value = ''; input.click(); }
 }
 
-function handleGlobalAvatarUpload(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  if (file.size > 3 * 1024 * 1024) { toast('Profile photo must be under 3MB.', 'error'); return; }
-  const reader = new FileReader();
-  reader.onload = ev => {
-    if (!OMH.currentUser) return;
-    OMH.currentUser.avatar = ev.target.result;
-    OMH.save();
-    renderProfilePage();
-    renderSidebar();
-    toast('Profile photo updated! ✓', 'success');
-  };
-  reader.readAsDataURL(file);
+function triggerBannerUpload() {
+  const input = document.getElementById('global-banner-input');
+  if (input) { input.value = ''; input.click(); }
 }
 
-// Keep old function as alias for safety
+async function handleGlobalAvatarUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { toast('Photo must be under 5MB.', 'error'); return; }
+  toast('Uploading photo...', 'info', 60000);
+  try {
+    const url = await uploadToBackblaze(file);
+    if (!OMH.currentUser) return;
+    OMH.currentUser.avatarUrl = url;
+    OMH.save();
+    await sb.from('users').update({ avatar_url: url }).eq('username', OMH.currentUser.username);
+    renderProfilePage();
+    renderSidebar();
+    renderSettings();
+    toast('Profile photo updated! ✓', 'success');
+  } catch (err) {
+    toast('Photo upload failed: ' + err.message, 'error');
+  }
+}
+
+async function handleGlobalBannerUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 8 * 1024 * 1024) { toast('Banner must be under 8MB.', 'error'); return; }
+  toast('Uploading banner...', 'info', 60000);
+  try {
+    const url = await uploadToBackblaze(file);
+    if (!OMH.currentUser) return;
+    OMH.currentUser.bannerUrl = url;
+    OMH.save();
+    await sb.from('users').update({ banner_url: url }).eq('username', OMH.currentUser.username);
+    renderProfilePage();
+    toast('Banner updated! ✓', 'success');
+  } catch (err) {
+    toast('Banner upload failed: ' + err.message, 'error');
+  }
+}
+
 function uploadAvatar(e) { handleGlobalAvatarUpload(e); }
 
 // ── Repost menu ──────────────────────────────────────────────────────────────
@@ -3295,5 +3613,6 @@ renderNotifBadge();
 </script>
 <!-- Global avatar file input - must be in DOM not innerHTML -->
 <input type="file" id="global-avatar-input" accept="image/*" style="display:none;" onchange="handleGlobalAvatarUpload(event)" />
+<input type="file" id="global-banner-input" accept="image/*" style="display:none;" onchange="handleGlobalBannerUpload(event)" />
 </body>
 </html>
