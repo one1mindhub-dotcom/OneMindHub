@@ -2233,7 +2233,7 @@ function renderContent(text) {
   return text
     .replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/#(\w+)/g, '<span style="color:var(--accent);cursor:pointer;" onclick="handleSearch(\'#$1\')">#$1</span>')
-    .replace(/\$([A-Za-z]{1,6})/g, '<span style="color:#10b981;cursor:pointer;font-weight:600;" onclick="handleSearch(\'\$$1\')">\$$1</span>')
+    .replace(/\$([A-Za-z]{1,6})/g, (m, t) => `<span style="color:#10b981;cursor:pointer;font-weight:600;" onclick="handleSearch('$${t}')">$${t}</span>`)
     .replace(/@(\w+)/g, '<span style="color:var(--accent);">@$1</span>');
 }
 
@@ -2674,6 +2674,7 @@ function switchProfileTab(tab) {
 function renderProfileContent() {
   const el = document.getElementById('profile-tab-content');
   if (!el) return;
+  if (OMH.openMenuId) return; // don't re-render while a menu is open
   const u = profileUsername ? OMH.users.find(x => x.username === profileUsername) : OMH.currentUser;
   if (!u) return;
 
