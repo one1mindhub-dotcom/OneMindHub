@@ -392,6 +392,8 @@ const OMH = {
     if (post.author !== this.currentUser?.username && !this.currentUser?.isAdmin) return false;
     post.removed = true;
     sb.from('posts').update({ removed: true }).eq('id', postId);
+    // Re-fetch posts after short delay so all open sessions stay in sync
+    setTimeout(() => OMH.fetchPosts().then(() => { renderFeed(); if (OMH.currentPage === 'profile') renderProfilePage(); }), 500);
     return true;
   },
 
@@ -1431,23 +1433,52 @@ document.addEventListener('click', () => {
 
 function togglePostMenu(postId, e) {
   e.stopPropagation();
-  if (OMH.openMenuId && OMH.openMenuId !== postId) {
-    const prev = document.getElementById('menu-'+OMH.openMenuId);
-    if (prev) prev.classList.remove('open');
+
+  // If same menu clicked again, close it
+  if (OMH.openMenuId === postId) {
+    closeAllMenus();
+    return;
   }
-  const el = document.getElementById('menu-'+postId);
-  if (el) {
-    el.classList.toggle('open');
-    OMH.openMenuId = el.classList.contains('open') ? postId : null;
-    // Position menu near the button
-    if (OMH.openMenuId && e.currentTarget) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      el.style.position = 'fixed';
-      el.style.top = (rect.bottom + 4) + 'px';
-      el.style.right = (window.innerWidth - rect.right) + 'px';
-      el.style.zIndex = '9999';
-    }
+
+  closeAllMenus();
+
+  const post = OMH.posts.find(p => p.id === postId);
+  if (!post) return;
+  const u = OMH.currentUser;
+  const isOwner = u && post.author === u.username;
+  const isAdmin = u?.isAdmin;
+
+  // Build menu HTML dynamically
+  let items = '';
+  if (isOwner || isAdmin) {
+    items += `<div class="post-menu-item" onclick="openEdit('${postId}');closeAllMenus()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit post</div>`;
+    items += `<div class="post-menu-item danger" onclick="deletePost('${postId}');closeAllMenus()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>Delete post</div>`;
+  } else {
+    items += `<div class="post-menu-item danger" onclick="blockUser('${post.author}');closeAllMenus()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>Block @${post.author}</div>`;
+    items += `<div class="post-menu-item" onclick="OMH.flagPost('${postId}');closeAllMenus()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>Report post</div>`;
   }
+  items += `<div class="post-menu-item" onclick="sharePost('${postId}');closeAllMenus()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>Copy link</div>`;
+
+  // Position floating menu
+  const btn = e.currentTarget;
+  const rect = btn.getBoundingClientRect();
+  const floater = document.getElementById('floating-post-menu');
+  floater.innerHTML = items;
+  floater.style.display = 'block';
+  floater.style.top = (rect.bottom + window.scrollY + 4) + 'px';
+  floater.style.right = (window.innerWidth - rect.right) + 'px';
+  OMH.openMenuId = postId;
+}
+
+function closeAllMenus() {
+  OMH.openMenuId = null;
+  const floater = document.getElementById('floating-post-menu');
+  if (floater) floater.style.display = 'none';
 }
 
 // Auth
@@ -2163,7 +2194,19 @@ function openReply(postId) {
   if (!OMH.currentUser) { showModal('login'); return; }
   replyTargetId = postId;
   const post = OMH.posts.find(p => p.id===postId);
-  document.getElementById('reply-parent').textContent = `@${post.author}: ${post.content.slice(0,120)}${post.content.length>120?'…':''}`;
+  const author = OMH.users.find(u => u.username === post.author);
+  const avatarHtml = author?.avatar
+    ? `<img src="${author.avatar}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+    : `<div style="width:32px;height:32px;border-radius:50%;background:${getAvatarColor(post.author)};display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:13px;flex-shrink:0;">${(post.author||'?')[0].toUpperCase()}</div>`;
+  const displayName = author?.fullName || post.author;
+  document.getElementById('reply-parent').innerHTML = `
+    <div style="display:flex;gap:10px;align-items:flex-start;">
+      ${avatarHtml}
+      <div>
+        <div style="font-weight:600;font-size:13px;margin-bottom:2px;">${displayName} <span style="color:var(--muted);font-weight:400;">@${post.author}</span></div>
+        <div style="font-size:13px;color:var(--text);line-height:1.5;">${post.content.slice(0,120)}${post.content.length>120?'…':''}</div>
+      </div>
+    </div>`;
   document.getElementById('reply-text').value = '';
   showModal('reply');
 }
@@ -2709,7 +2752,7 @@ function switchProfileTab(tab) {
 function renderProfileContent() {
   const el = document.getElementById('profile-tab-content');
   if (!el) return;
-  if (OMH.openMenuId) return; // don't re-render while a menu is open
+  const wasOpenId = OMH.openMenuId; // remember if a menu was open
   const u = profileUsername ? OMH.users.find(x => x.username === profileUsername) : OMH.currentUser;
   if (!u) return;
 
@@ -2781,7 +2824,6 @@ function renderProfileContent() {
 function renderProfilePage() {
   const el = document.getElementById('profile-content');
   if (!el) return;
-  if (OMH.openMenuId) return; // don't re-render while a menu is open
 
   // If no profileUsername set, default to own profile
   const isOwnProfile = !profileUsername || profileUsername === OMH.currentUser?.username;
@@ -3651,5 +3693,14 @@ renderNotifBadge();
 <!-- Global avatar file input - must be in DOM not innerHTML -->
 <input type="file" id="global-avatar-input" accept="image/*" style="display:none;" onchange="handleGlobalAvatarUpload(event)" />
 <input type="file" id="global-banner-input" accept="image/*" style="display:none;" onchange="handleGlobalBannerUpload(event)" />
+<div id="floating-post-menu" style="display:none;position:absolute;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.4);min-width:170px;z-index:9999;overflow:hidden;padding:4px 0;"></div>
+<script>
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#floating-post-menu') && !e.target.closest('[onclick*="togglePostMenu"]')) {
+    closeAllMenus();
+  }
+});
+document.addEventListener('scroll', closeAllMenus, true);
+</script>
 </body>
 </html>
