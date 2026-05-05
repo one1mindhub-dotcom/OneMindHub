@@ -84,7 +84,7 @@ body{background:var(--bg);color:var(--text);font-family:'Sora',sans-serif;min-he
 .geo-badge{display:inline-flex;align-items:center;gap:4px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);color:var(--green);border-radius:20px;padding:2px 10px;font-size:11px;font-weight:600}
 
 /* Modals */
-.overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px}
 .modal{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:32px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.6);animation:slideUp .25s ease;position:relative}
 .modal-close-btn{position:absolute;top:14px;right:14px;background:rgba(255,255,255,0.08);border:none;color:var(--text);cursor:pointer;font-size:16px;line-height:1;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;z-index:20;transition:background .2s;font-family:sans-serif}
 .modal-close-btn:hover{background:rgba(255,255,255,0.2)}
@@ -391,7 +391,8 @@ const OMH = {
     if (!post) return false;
     if (post.author !== this.currentUser?.username && !this.currentUser?.isAdmin) return false;
     post.removed = true;
-    sb.from('posts').update({ removed: true }).eq('id', postId);
+    sb.from('posts').update({ removed: true }).eq('id', postId)
+      .then(({ error }) => { if (error) console.error('Delete failed:', error); });
     return true;
   },
 
@@ -1338,8 +1339,10 @@ initApp();
 
 // Modal helpers
 function showModal(name) { 
+  closeAllMenus();
+  closeRepostMenu();
   const el = document.getElementById('modal-'+name);
-  if (el) { el.style.display='flex'; el.style.zIndex='100'; }
+  if (el) { el.style.display='flex'; }
 }
 function closeModal(name) { 
   const el = document.getElementById('modal-'+name);
@@ -2600,11 +2603,11 @@ function renderPost(post) {
                 <span style="color:${reposted?'var(--green)':'inherit'}">${(sourcePost.reposts||[]).length||''}</span>
               </button>
               <div id="rp-menu-${post.id}" style="display:none;position:absolute;top:36px;left:0;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:6px;z-index:50;min-width:150px;box-shadow:0 8px 24px rgba(0,0,0,.4);">
-                <button onclick="OMH.repostPost('${sourcePostId}');closeRepostMenu('${post.id}')" style="width:100%;background:none;border:none;cursor:pointer;color:${reposted?'var(--green)':'var(--text)'};font-size:13px;font-family:'Sora',sans-serif;padding:8px 12px;border-radius:8px;text-align:left;display:flex;align-items:center;gap:8px;" onmouseover="this.style.background='var(--glow)'" onmouseout="this.style.background='none'">
+                <button onclick="OMH.repostPost('${sourcePostId}');closeRepostMenu()" style="width:100%;background:none;border:none;cursor:pointer;color:${reposted?'var(--green)':'var(--text)'};font-size:13px;font-family:'Sora',sans-serif;padding:8px 12px;border-radius:8px;text-align:left;display:flex;align-items:center;gap:8px;" onmouseover="this.style.background='var(--glow)'" onmouseout="this.style.background='none'">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="${reposted?'currentColor':'none'}" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
                   ${reposted?'Undo Repost':'Repost'}
                 </button>
-                <button onclick="openQuote('${sourcePostId}');closeRepostMenu('${post.id}')" style="width:100%;background:none;border:none;cursor:pointer;color:var(--text);font-size:13px;font-family:'Sora',sans-serif;padding:8px 12px;border-radius:8px;text-align:left;display:flex;align-items:center;gap:8px;" onmouseover="this.style.background='var(--glow)'" onmouseout="this.style.background='none'">
+                <button onclick="openQuote('${sourcePostId}');closeRepostMenu()" style="width:100%;background:none;border:none;cursor:pointer;color:var(--text);font-size:13px;font-family:'Sora',sans-serif;padding:8px 12px;border-radius:8px;text-align:left;display:flex;align-items:center;gap:8px;" onmouseover="this.style.background='var(--glow)'" onmouseout="this.style.background='none'">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5"/><path d="M17.5 3.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 7.5-7.5z"/></svg>
                   Quote
                 </button>
