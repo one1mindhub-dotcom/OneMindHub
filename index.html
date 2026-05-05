@@ -125,7 +125,7 @@ label{font-size:13px;color:var(--muted);font-weight:500;margin-bottom:5px;displa
 .premium-badge{background:linear-gradient(135deg,#4f6ef7,#7c3aed);color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700}
 
 /* Toast — X/Twitter style */
-#toast-container{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:none;}
+#toast-container{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:10100;display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:none;}
 .toast{
   background:#1a1a1a;
   border:1px solid rgba(255,255,255,0.12);
@@ -1109,7 +1109,7 @@ document.addEventListener('visibilitychange', async () => {
       <div class="section-title" style="margin-bottom:10px;">Trending</div>
       <div id="right-trends"></div>
     </div>
-    <div style="background:linear-gradient(135deg,rgba(79,110,247,.1),rgba(124,58,237,.1));border:1px solid rgba(79,110,247,.3);border-radius:16px;padding:16px;">
+    <div id="right-upgrade-card" style="background:linear-gradient(135deg,rgba(79,110,247,.1),rgba(124,58,237,.1));border:1px solid rgba(79,110,247,.3);border-radius:16px;padding:16px;">
       <div style="font-size:13px;font-weight:700;margin-bottom:4px;">⚡ Go Verified</div>
       <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px;">Unlimited GeoVotes · Multi-region support · Vote analytics · Community Court access · Verified badge</div>
       <button class="btn-primary" style="width:100%;font-size:13px;" onclick="showModal('premium')">Upgrade — $8/mo</button>
@@ -1913,8 +1913,22 @@ async function uploadToBackblaze(file) {
       progressEl.innerHTML = `<div class="toast-icon">↑</div><div style="flex:1;"><div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>Uploading video</span><strong id="vid-pct">0%</strong></div><div style="height:4px;background:rgba(255,255,255,.15);border-radius:4px;overflow:hidden;"><div id="vid-bar" style="height:100%;background:var(--accent);width:0%;transition:width .4s ease;border-radius:4px;"></div></div></div>`;
       document.getElementById('toast-container').appendChild(progressEl);
 
+      // Simulated progress for browsers (e.g. iOS Safari) that don't fire onprogress for cross-origin XHR
+      let simulatedPct = 0;
+      let progressFired = false;
+      const simInterval = setInterval(() => {
+        if (progressFired) { clearInterval(simInterval); return; }
+        simulatedPct = Math.min(simulatedPct + (90 - simulatedPct) * 0.07, 89);
+        const pctEl = document.getElementById('vid-pct');
+        const barEl = document.getElementById('vid-bar');
+        if (pctEl) pctEl.textContent = Math.round(simulatedPct) + '%';
+        if (barEl) barEl.style.width = Math.round(simulatedPct) + '%';
+      }, 400);
+
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
+          progressFired = true;
+          clearInterval(simInterval);
           const pct = Math.round(e.loaded / e.total * 100);
           const pctEl = document.getElementById('vid-pct');
           const barEl = document.getElementById('vid-bar');
@@ -1924,7 +1938,12 @@ async function uploadToBackblaze(file) {
       };
 
       xhr.onload = () => {
-        progressEl.remove();
+        clearInterval(simInterval);
+        const pctEl = document.getElementById('vid-pct');
+        const barEl = document.getElementById('vid-bar');
+        if (pctEl) pctEl.textContent = '100%';
+        if (barEl) barEl.style.width = '100%';
+        setTimeout(() => progressEl.remove(), 400);
         if (xhr.status === 200 || xhr.status === 204) {
           resolve();
         } else {
@@ -1933,6 +1952,7 @@ async function uploadToBackblaze(file) {
       };
 
       xhr.onerror = () => {
+        clearInterval(simInterval);
         progressEl.remove();
         reject(new Error('Video upload network error'));
       };
@@ -2591,7 +2611,7 @@ function renderPost(post) {
   trackView(post.id);
   const u = OMH.currentUser;
   const liked = u && post.likes.includes(u.username);
-  const canFlag = u && (u.isPremium || u.isAdmin);
+  const canFlag = u && (u.isPremium || u.isFounder || u.isAdmin);
   const isOwner = u && (post.author === u.username || u.isAdmin);
   const isFlagged = OMH.courtCases.some(c => c.postId === post.id && c.status === 'open');
   const bookmarked = u && u.bookmarks && u.bookmarks.includes(post.id);
@@ -3548,6 +3568,11 @@ function renderRightPanel() {
   const votesEl = document.getElementById('right-votes');
   const trendsEl = document.getElementById('right-trends');
   if (!votesEl || !trendsEl) return;
+  const upgradeCard = document.getElementById('right-upgrade-card');
+  if (upgradeCard) {
+    const u = OMH.currentUser;
+    upgradeCard.style.display = (u && (u.isPremium || u.isFounder || u.isAdmin)) ? 'none' : '';
+  }
 
   const votes = OMH.posts.filter(p=>p.vote&&!p.removed).slice(0,3);
   votesEl.innerHTML = votes.length
