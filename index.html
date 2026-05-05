@@ -535,17 +535,19 @@ const OMH = {
   },
 
   async fetchCourtCases() {
-    const { data, error } = await sb.from('court_cases').select('*').order('opened_at', { ascending: false }).limit(200);
+    const { data, error } = await sb.from('court_cases').select('*').limit(200);
     if (error) { console.error('fetchCourtCases error:', error); return; }
     if (data) {
-      this.courtCases = data.map(r => ({
-        id: r.id, postId: r.post_id, postContent: r.post_content,
-        postAuthor: r.post_author, postCountry: r.post_country || '', postState: r.post_state || '',
-        openedBy: r.opened_by, openedAt: r.opened_at,
-        keepVotes: Array.isArray(r.keep_votes) ? r.keep_votes : [],
-        removeVotes: Array.isArray(r.remove_votes) ? r.remove_votes : [],
-        status: r.status || 'open', quorum: r.quorum || 5
-      }));
+      this.courtCases = data
+        .sort((a, b) => (b.opened_at || b.id || '').localeCompare(a.opened_at || a.id || ''))
+        .map(r => ({
+          id: r.id, postId: r.post_id, postContent: r.post_content,
+          postAuthor: r.post_author, postCountry: r.post_country || '', postState: r.post_state || '',
+          openedBy: r.opened_by, openedAt: r.opened_at,
+          keepVotes: Array.isArray(r.keep_votes) ? r.keep_votes : [],
+          removeVotes: Array.isArray(r.remove_votes) ? r.remove_votes : [],
+          status: r.status || 'open', quorum: r.quorum || 5
+        }));
     }
   },
 
