@@ -1484,7 +1484,7 @@ function togglePostMenu(postId, e) {
 }
 
 function closeAllMenus() {
-  OMH.openMenuId = null;
+  try { if (OMH) OMH.openMenuId = null; } catch(e) {}
   const floater = document.getElementById('floating-post-menu');
   if (floater) floater.style.display = 'none';
 }
@@ -2210,7 +2210,7 @@ function openReply(postId) {
   // Show original post author info
   const authorAvatar = author?.avatar
     ? `<img src="${author.avatar}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">`
-    : `<div style="width:32px;height:32px;border-radius:50%;background:${getAvatarColor(post.author)};display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:13px;">${(post.author||'?')[0].toUpperCase()}</div>`;
+    : `<div style="width:32px;height:32px;border-radius:50%;background:${avatarColor(post.author)};display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:13px;">${(post.author||'?')[0].toUpperCase()}</div>`;
   const displayName = author?.fullName || post.author;
   document.getElementById('reply-parent').innerHTML = `
     <div style="display:flex;gap:10px;align-items:flex-start;">
@@ -2227,7 +2227,7 @@ function openReply(postId) {
   if (myAvatarEl) {
     myAvatarEl.innerHTML = me.avatar
       ? `<img src="${me.avatar}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">`
-      : `<div style="width:36px;height:36px;border-radius:50%;background:${getAvatarColor(me.username)};display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:14px;">${(me.username||'?')[0].toUpperCase()}</div>`;
+      : `<div style="width:36px;height:36px;border-radius:50%;background:${avatarColor(me.username)};display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:14px;">${(me.username||'?')[0].toUpperCase()}</div>`;
   }
 
   // Reset media
@@ -3543,6 +3543,7 @@ function uploadAvatar(e) { handleGlobalAvatarUpload(e); }
 // ── Repost menu ──────────────────────────────────────────────────────────────
 let _rpMenuPostId = null;
 function toggleRepostMenu(postId, e) {
+  if (e) e.stopPropagation();
   if (!OMH.currentUser) { showModal('login'); return; }
   if (!e) e = window.event;
   if (_rpMenuPostId === postId) { closeRepostMenu(); return; }
@@ -3573,7 +3574,7 @@ function toggleRepostMenu(postId, e) {
 function closeRepostMenu() {
   _rpMenuPostId = null;
   const floater = document.getElementById('floating-post-menu');
-  if (floater && !OMH.openMenuId) floater.style.display = 'none';
+  try { if (floater && !OMH.openMenuId) floater.style.display = 'none'; } catch(e) { if (floater) floater.style.display = 'none'; }
 }
 
 // ── Quote post ───────────────────────────────────────────────────────────────
@@ -3775,11 +3776,16 @@ renderNotifBadge();
 <div id="floating-post-menu" style="display:none;position:absolute;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.4);min-width:170px;z-index:9999;overflow:hidden;padding:4px 0;"></div>
 <script>
 document.addEventListener('click', function(e) {
-  if (!e.target.closest('#floating-post-menu') && !e.target.closest('[onclick*="togglePostMenu"]')) {
+  const inFloater = e.target.closest('#floating-post-menu');
+  const inPostMenuBtn = e.target.closest('[onclick*="togglePostMenu"]');
+  const inRepostBtn = e.target.closest('[onclick*="toggleRepostMenu"]');
+  const inModal = e.target.closest('.overlay');
+  if (!inFloater && !inPostMenuBtn && !inRepostBtn && !inModal) {
     closeAllMenus();
+    if (typeof _rpMenuPostId !== 'undefined' && _rpMenuPostId) closeRepostMenu();
   }
 });
-document.addEventListener('scroll', closeAllMenus, true);
+document.addEventListener('scroll', function() { closeAllMenus(); closeRepostMenu(); }, true);
 </script>
 </body>
 </html>
