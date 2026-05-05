@@ -767,6 +767,17 @@ async function initApp() {
   }
 }
 initApp();
+
+// Auto-activate membership when user returns from Stripe tab
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && OMH.currentUser) {
+    const pending = localStorage.getItem('omh_pending_activation');
+    if (pending) {
+      localStorage.removeItem('omh_pending_activation');
+      await activatePremium(pending);
+    }
+  }
+});
 </script>
 
 <!-- TOAST -->
@@ -1258,9 +1269,7 @@ initApp();
           </div>
         </div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.6;">Be among the first 100 founders. You'll get the permanent 👑 Founder badge, lifetime Premium, and your name in OneMind's history.</div>
-        <a href="https://buy.stripe.com/dRmcN6f8v6NkdRZeeC77O09" target="_blank" rel="noopener" style="display:block;text-decoration:none;">
-          <button style="width:100%;padding:12px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;border:none;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;font-family:'Sora',sans-serif;">👑 Become a Founder</button>
-        </a>
+        <button onclick="launchFounderCheckout()" style="width:100%;padding:12px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;border:none;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;font-family:'Sora',sans-serif;">👑 Become a Founder</button>
       </div>
     </div>
 
@@ -1748,6 +1757,19 @@ const STRIPE_LINKS = {
   yearly:  'https://buy.stripe.com/6oUfZi9ObgnU0198Ui77O01',
   founder: 'https://buy.stripe.com/dRmcN6f8v6NkdRZeeC77O09'
 };
+
+function launchFounderCheckout() {
+  if (!OMH.currentUser) {
+    toast('Please sign in first so your badge can activate after payment.', 'error');
+    showModal('login');
+    return;
+  }
+  // Store pending activation — activates automatically when they return to the page
+  localStorage.setItem('omh_pending_activation', 'founder');
+  // Open Stripe — set success URL to https://onemindhub.com?activated=founder in Stripe dashboard
+  window.open('https://buy.stripe.com/dRmcN6f8v6NkdRZeeC77O09', '_blank');
+  toast('Complete payment in the new tab. Your 👑 Founder badge will activate when you return.', 'info', 8000);
+}
 
 function selectPlan(plan) {
   const monthlyBtn = document.getElementById('plan-monthly-btn');
