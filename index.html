@@ -392,8 +392,6 @@ const OMH = {
     if (post.author !== this.currentUser?.username && !this.currentUser?.isAdmin) return false;
     post.removed = true;
     sb.from('posts').update({ removed: true }).eq('id', postId);
-    // Re-fetch after delay to sync other sessions (longer delay to let Supabase confirm write)
-    setTimeout(() => OMH.fetchPosts().then(() => { renderFeed(); if (OMH.currentPage === 'profile') renderProfilePage(); }), 2000);
     return true;
   },
 
@@ -2592,12 +2590,12 @@ function renderPost(post) {
           ${voteHtml}
           ${repliesHtml}
           <div style="display:flex;gap:0;margin-top:12px;align-items:center;justify-content:space-between;">
-            <button onclick="openReply('${post.id}')" style="background:none;border:none;cursor:pointer;color:var(--muted);display:flex;align-items:center;gap:4px;font-size:13px;font-family:'Sora',sans-serif;padding:6px 8px;border-radius:8px;transition:all .15s;" onmouseover="this.style.color='var(--accent)';this.style.background='var(--glow)'" onmouseout="this.style.color='var(--muted)';this.style.background='none'">
+            <button onclick="event.stopPropagation();openReply('${post.id}')" style="background:none;border:none;cursor:pointer;color:var(--muted);display:flex;align-items:center;gap:4px;font-size:13px;font-family:'Sora',sans-serif;padding:6px 8px;border-radius:8px;transition:all .15s;" onmouseover="this.style.color='var(--accent)';this.style.background='var(--glow)'" onmouseout="this.style.color='var(--muted)';this.style.background='none'">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               <span>${post.replies.length||''}</span>
             </button>
             <div style="position:relative;display:inline-flex;">
-              <button onclick="toggleRepostMenu('${post.id}')" style="background:none;border:none;cursor:pointer;color:${reposted?'var(--green)':'var(--muted)'};display:flex;align-items:center;gap:4px;font-size:13px;font-family:'Sora',sans-serif;padding:6px 8px;border-radius:8px;transition:all .15s;" onmouseover="this.style.color='var(--green)';this.style.background='rgba(16,185,129,.08)'" onmouseout="this.style.color='${reposted?'var(--green)':'var(--muted)'}';this.style.background='none'">
+              <button onclick="toggleRepostMenu('${post.id}',event)" style="background:none;border:none;cursor:pointer;color:${reposted?'var(--green)':'var(--muted)'};display:flex;align-items:center;gap:4px;font-size:13px;font-family:'Sora',sans-serif;padding:6px 8px;border-radius:8px;transition:all .15s;" onmouseover="this.style.color='var(--green)';this.style.background='rgba(16,185,129,.08)'" onmouseout="this.style.color='${reposted?'var(--green)':'var(--muted)'}';this.style.background='none'">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="${reposted?'currentColor':'none'}" stroke="${reposted?'var(--green)':'currentColor'}" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
                 <span style="color:${reposted?'var(--green)':'inherit'}">${(sourcePost.reposts||[]).length||''}</span>
               </button>
@@ -3540,26 +3538,39 @@ async function handleGlobalBannerUpload(e) {
 function uploadAvatar(e) { handleGlobalAvatarUpload(e); }
 
 // ── Repost menu ──────────────────────────────────────────────────────────────
-function toggleRepostMenu(postId) {
+let _rpMenuPostId = null;
+function toggleRepostMenu(postId, e) {
   if (!OMH.currentUser) { showModal('login'); return; }
-  const m = document.getElementById('rp-menu-' + postId);
-  if (!m) return;
-  const isOpen = m.style.display !== 'none';
-  // close all open menus first
-  document.querySelectorAll('[id^="rp-menu-"]').forEach(el => el.style.display = 'none');
-  if (!isOpen) {
-    m.style.display = 'block';
-    // close on outside click
-    setTimeout(() => {
-      document.addEventListener('click', function h(e) {
-        if (!m.contains(e.target)) { m.style.display = 'none'; document.removeEventListener('click', h); }
-      });
-    }, 10);
+  if (!e) e = window.event;
+  if (_rpMenuPostId === postId) { closeRepostMenu(); return; }
+  closeRepostMenu();
+  const sourcePostId = (() => { const p = OMH.posts.find(x => x.id === postId); return p?.isRepost ? p.repostOf : postId; })();
+  const post = OMH.posts.find(p => p.id === sourcePostId) || OMH.posts.find(p => p.id === postId);
+  if (!post) return;
+  const reposted = post.reposts?.includes(OMH.currentUser.username);
+  const floater = document.getElementById('floating-post-menu');
+  floater.innerHTML = `
+    <div class="post-menu-item" onclick="OMH.repostPost('${sourcePostId}');closeRepostMenu()" style="color:${reposted?'var(--green)':'var(--text)'}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+      ${reposted ? 'Undo repost' : 'Repost'}
+    </div>
+    <div class="post-menu-item" onclick="openQuote('${sourcePostId}');closeRepostMenu()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      Quote post
+    </div>`;
+  const btn = e?.currentTarget || e?.target;
+  if (btn) {
+    const rect = btn.getBoundingClientRect();
+    floater.style.display = 'block';
+    floater.style.top = (rect.bottom + window.scrollY + 4) + 'px';
+    floater.style.right = (window.innerWidth - rect.right) + 'px';
   }
+  _rpMenuPostId = postId;
 }
-function closeRepostMenu(postId) {
-  const m = document.getElementById('rp-menu-' + postId);
-  if (m) m.style.display = 'none';
+function closeRepostMenu() {
+  _rpMenuPostId = null;
+  const floater = document.getElementById('floating-post-menu');
+  if (floater && !OMH.openMenuId) floater.style.display = 'none';
 }
 
 // ── Quote post ───────────────────────────────────────────────────────────────
