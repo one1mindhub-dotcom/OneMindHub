@@ -562,7 +562,8 @@ const OMH = {
     };
     this.posts.unshift(repost);
     sb.from('posts').update({ reposts: original.reposts }).eq('id', postId);
-    sb.from('posts').insert(postToDbRow(repost));
+    sb.from('posts').insert(postToDbRow(repost))
+      .then(({ error }) => { if (error) { console.error('Repost insert failed:', error); toast('Repost saved locally but sync failed: ' + error.message, 'error'); } });
     this.pushNotification(original.author, 'repost', uid, postId);
     renderFeed();
     toast('Reposted!', 'success', 2500);
@@ -2513,14 +2514,22 @@ function renderPost(post) {
   let repliesHtml = '';
   if (post.replies && post.replies.length > 0) {
     repliesHtml = `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">` +
-      post.replies.slice(-2).map(r => `
-        <div style="display:flex;gap:8px;margin-top:6px;">
-          <div class="avatar" style="width:26px;height:26px;font-size:10px;background:${avatarColor(r.author)};">${initials(r.authorName)}</div>
+      post.replies.slice(-2).map(r => {
+        const replyUser = OMH.users.find(u => u.username === r.author);
+        const replyAvatar = replyUser?.avatarUrl || replyUser?.avatar;
+        const avatarEl = replyAvatar
+          ? `<img src="${replyAvatar}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+          : `<div class="avatar" style="width:26px;height:26px;font-size:10px;flex-shrink:0;background:${avatarColor(r.author)};">${initials(r.authorName)}</div>`;
+        return `
+        <div style="display:flex;gap:8px;margin-top:6px;align-items:flex-start;">
+          ${avatarEl}
           <div style="font-size:12px;line-height:1.4;">
-            <span style="font-weight:600;">@${r.author}</span> <span style="color:var(--muted);">${r.content ? r.content.slice(0,100) : ''}</span>
+            <span style="font-weight:600;">${r.authorName || r.author}</span> <span style="color:var(--muted);font-size:11px;">@${r.author}</span>
+            <div style="color:var(--text);margin-top:1px;">${r.content ? r.content.slice(0,100) : ''}${r.content?.length > 100 ? '…' : ''}</div>
             ${r.media ? `<div style="margin-top:4px;"><img src="${r.media}" style="max-width:180px;max-height:120px;border-radius:8px;object-fit:cover;" onerror="this.style.display='none'"></div>` : ''}
           </div>
-        </div>`).join('') +
+        </div>`;
+      }).join('') +
       (post.replies.length > 2 ? `<div style="font-size:11px;color:var(--muted);margin-top:6px;cursor:pointer;" onclick="openReply('${post.id}')">+${post.replies.length-2} more replies</div>` : '') +
     `</div>`;
   }
