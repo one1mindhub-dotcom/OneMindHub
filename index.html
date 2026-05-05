@@ -2882,8 +2882,12 @@ function renderCourtPage() {
     const votedRemove = OMH.currentUser && c.removeVotes.includes(OMH.currentUser.username);
     // Region eligibility check for display
     const u = OMH.currentUser;
-    const regionLocked = c.postState || c.postCountry;
-    const canVoteRegion = !regionLocked || !u || (c.postState ? u.state === c.postState : u.country === c.postCountry);
+    // Only restrict if BOTH the case has a region AND the user has a region set
+    // If either is missing/empty, allow the vote (no location = no restriction)
+    const canVoteRegion = !u ? false :
+      !c.postState ? true :            // no state restriction on case → allow
+      !u.state ? true :                // user has no state stored → allow
+      u.state.toLowerCase().trim() === c.postState.toLowerCase().trim();  // compare case-insensitive
     return `
       <div class="court-case">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px;">
