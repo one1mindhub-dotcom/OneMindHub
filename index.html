@@ -1439,6 +1439,14 @@ function togglePostMenu(postId, e) {
   if (el) {
     el.classList.toggle('open');
     OMH.openMenuId = el.classList.contains('open') ? postId : null;
+    // Position menu near the button
+    if (OMH.openMenuId && e.currentTarget) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      el.style.position = 'fixed';
+      el.style.top = (rect.bottom + 4) + 'px';
+      el.style.right = (window.innerWidth - rect.right) + 'px';
+      el.style.zIndex = '9999';
+    }
   }
 }
 
@@ -1715,20 +1723,47 @@ async function uploadToBackblaze(file) {
     uploadUrl = initData.uploadUrl;
     streamUid = initData.streamUid;
 
-    // Step 2: Upload file directly to Stream TUS endpoint
-    const uploadRes = await fetch(uploadUrl, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/offset+octet-stream',
-        'Tus-Resumable': '1.0.0',
-        'Upload-Offset': '0',
-      },
-      body: file
-    });
+    // Step 2: Upload file directly to Stream TUS endpoint with progress
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PATCH', uploadUrl);
+      xhr.setRequestHeader('Content-Type', 'application/offset+octet-stream');
+      xhr.setRequestHeader('Tus-Resumable', '1.0.0');
+      xhr.setRequestHeader('Upload-Offset', '0');
 
-    if (!uploadRes.ok && uploadRes.status !== 204) {
-      throw new Error('Video upload to Stream failed: status ' + uploadRes.status);
-    }
+      // Create a persistent progress toast
+      const progressEl = document.createElement('div');
+      progressEl.className = 'toast info';
+      progressEl.style.cssText = 'pointer-events:auto;min-width:220px;';
+      progressEl.innerHTML = `<div class="toast-icon">↑</div><div style="flex:1;"><div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>Uploading video</span><strong id="vid-pct">0%</strong></div><div style="height:4px;background:rgba(255,255,255,.15);border-radius:4px;overflow:hidden;"><div id="vid-bar" style="height:100%;background:var(--accent);width:0%;transition:width .4s ease;border-radius:4px;"></div></div></div>`;
+      document.getElementById('toast-container').appendChild(progressEl);
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round(e.loaded / e.total * 100);
+          const pctEl = document.getElementById('vid-pct');
+          const barEl = document.getElementById('vid-bar');
+          if (pctEl) pctEl.textContent = pct + '%';
+          if (barEl) barEl.style.width = pct + '%';
+        }
+      };
+
+      xhr.onload = () => {
+        progressEl.remove();
+        if (xhr.status === 200 || xhr.status === 204) {
+          resolve();
+        } else {
+          reject(new Error('Video upload to Stream failed: status ' + xhr.status));
+        }
+      };
+
+      xhr.onerror = () => {
+        progressEl.remove();
+        reject(new Error('Video upload network error'));
+      };
+
+      xhr.send(file);
+    });
 
     window._lastUploadMeta = {
       isVideo: true, streamUid,
@@ -1781,7 +1816,7 @@ async function previewImage(e) {
     reader.readAsDataURL(file);
   }
   if (wrap) wrap.style.display = 'inline-block';
-  const t = toast(`Uploading ${isVideo?'video':'image'}...`, 'info', 120000);
+  if (!isVideo) toast('Uploading image...', 'info', 120000);
   try {
     pendingImage = await uploadToBackblaze(file);
     toast(`${isVideo?'Video':'Image'} uploaded! ✓`, 'success', 2000);
@@ -2746,6 +2781,7 @@ function renderProfileContent() {
 function renderProfilePage() {
   const el = document.getElementById('profile-content');
   if (!el) return;
+  if (OMH.openMenuId) return; // don't re-render while a menu is open
 
   // If no profileUsername set, default to own profile
   const isOwnProfile = !profileUsername || profileUsername === OMH.currentUser?.username;
@@ -3281,7 +3317,7 @@ async function previewComposeModalImage(e) {
     if (wrap) wrap.style.display = 'block';
   };
   reader.readAsDataURL(file);
-  toast(`Uploading ${isVideo?'video':'image'}...`, 'info', 120000);
+  if (!isVideo) toast('Uploading image...', 'info', 120000);
   try {
     composeModalImage = await uploadToBackblaze(file);
     toast(`${isVideo?'Video':'Image'} uploaded! ✓`, 'success', 2000);
