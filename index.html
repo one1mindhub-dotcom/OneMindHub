@@ -561,7 +561,8 @@ const OMH = {
       repostAuthor: original.authorName, repostAuthorHandle: original.author
     };
     this.posts.unshift(repost);
-    sb.from('posts').update({ reposts: original.reposts }).eq('id', postId);
+    sb.from('posts').update({ reposts: original.reposts }).eq('id', postId)
+      .then(({ error }) => { if (error) console.error('Reposts array update failed:', error); });
     sb.from('posts').insert(postToDbRow(repost))
       .then(({ error }) => { if (error) { console.error('Repost insert failed:', error); toast('Repost saved locally but sync failed: ' + error.message, 'error'); } });
     this.pushNotification(original.author, 'repost', uid, postId);
@@ -2209,8 +2210,8 @@ function openReply(postId) {
   const author = OMH.users.find(u => u.username === post.author);
 
   // Show original post author info
-  const authorAvatar = author?.avatar
-    ? `<img src="${author.avatar}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">`
+  const authorAvatar = (author?.avatarUrl || author?.avatar)
+    ? `<img src="${author.avatarUrl || author.avatar}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">`
     : `<div style="width:32px;height:32px;border-radius:50%;background:${avatarColor(post.author)};display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:13px;">${(post.author||'?')[0].toUpperCase()}</div>`;
   const displayName = author?.fullName || post.author;
   document.getElementById('reply-parent').innerHTML = `
@@ -2225,9 +2226,10 @@ function openReply(postId) {
   // Show current user's avatar in reply box
   const me = OMH.currentUser;
   const myAvatarEl = document.getElementById('reply-avatar');
+  const myAvatar = me.avatarUrl || me.avatar;
   if (myAvatarEl) {
-    myAvatarEl.innerHTML = me.avatar
-      ? `<img src="${me.avatar}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">`
+    myAvatarEl.innerHTML = myAvatar
+      ? `<img src="${myAvatar}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">`
       : `<div style="width:36px;height:36px;border-radius:50%;background:${avatarColor(me.username)};display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:14px;">${(me.username||'?')[0].toUpperCase()}</div>`;
   }
 
