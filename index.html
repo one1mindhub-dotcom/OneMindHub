@@ -395,6 +395,14 @@ const OMH = {
     post.removed = true;
     sb.from('posts').update({ removed: true }).eq('id', postId)
       .then(({ error }) => { if (error) console.error('Delete failed:', error); });
+    // If this post has an open court case, close it — author deleted the post themselves
+    const openCase = this.courtCases.find(c => c.postId === postId && c.status === 'open');
+    if (openCase) {
+      openCase.status = 'removed';
+      sb.from('court_cases').update({ status: 'removed' }).eq('id', openCase.id)
+        .then(({ error }) => { if (error) console.error('Court case close failed:', error); });
+      toast('Post deleted — Community Court case closed.', 'info');
+    }
     return true;
   },
 
