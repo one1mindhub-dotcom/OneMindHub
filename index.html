@@ -3713,6 +3713,7 @@ async function submitComposeModal() {
     authorName: OMH.currentUser.fullName,
     content: text, tags: tags,
     image: composeModalImage || null,
+    streamUid: (window._lastUploadMeta?.isVideo && window._lastUploadMeta?.streamUid) ? window._lastUploadMeta.streamUid : null,
     likes: [], replies: [], reposts: [],
     timestamp: new Date().toISOString(),
     editedAt: null,
@@ -3722,6 +3723,7 @@ async function submitComposeModal() {
     vote: pendingVote || null,
     removed: false
   };
+  window._lastUploadMeta = null;
   OMH.posts.unshift(post);
   sb.from('posts').insert(postToDbRow(post));
   pendingVote = null;
