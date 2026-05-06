@@ -1087,7 +1087,7 @@ document.addEventListener('visibilitychange', async () => {
     <div id="page-notifications" class="page">
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
         <div style="font-size:18px;font-weight:700;">Notifications</div>
-        <button onclick="markAllNotifsRead()" style="background:none;border:none;cursor:pointer;color:var(--accent);font-size:13px;font-family:'Sora',sans-serif;">Mark all read</button>
+        <button onclick="markAllNotifsRead()" style="background:none;border:none;cursor:pointer;color:var(--accent);font-size:13px;font-family:'Sora',sans-serif;">Clear all</button>
       </div>
       <div id="notif-list" style="padding:0;"></div>
     </div>
@@ -4041,14 +4041,16 @@ function renderNotificationsPage() {
     </div>`;
   }).join('');
 }
-function markAllNotifsRead() {
+async function markAllNotifsRead() {
   if (!OMH.currentUser) return;
-  OMH.notifications.filter(n => n.to === OMH.currentUser.username).forEach(n => n.read = true);
+  // Delete from Supabase
+  await sb.from('notifications').delete().eq('to_user', OMH.currentUser.username);
+  // Clear locally
+  OMH.notifications = OMH.notifications.filter(n => n.to !== OMH.currentUser.username);
   OMH.save();
-  // Also mark as read in Supabase
-  sb.from('notifications').update({ read: true }).eq('to_user', OMH.currentUser.username).eq('read', false);
   renderNotifBadge();
   renderNotificationsPage();
+  toast('Notifications cleared.', 'success', 2000);
 }
 
 // ── Bookmarks page ───────────────────────────────────────────────────────────
