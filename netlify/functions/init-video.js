@@ -30,6 +30,7 @@ exports.handler = async (event) => {
 
   const safeName = (name || 'video.mp4').replace(/[^\w.\-]/g, '_');
   const encodedName = Buffer.from(safeName).toString('base64');
+  const encodedMaxDuration = Buffer.from('600').toString('base64');
 
   return new Promise((resolve) => {
     const options = {
@@ -40,7 +41,7 @@ exports.handler = async (event) => {
         'Authorization':   `Bearer ${CF_STREAM_TOKEN}`,
         'Tus-Resumable':   '1.0.0',
         'Upload-Length':   String(size),
-        'Upload-Metadata': `name ${encodedName}`,
+        'Upload-Metadata': `name ${encodedName},maxDurationSeconds ${encodedMaxDuration}`,
         'Upload-Creator':  'onemindhub-user',
         'Content-Length':  '0',
       },
