@@ -2815,23 +2815,13 @@ function renderStreamVideo(streamUid) {
 }
 
 function renderContent(text) {
-  const lines = text.split('\n');
-  const escaped = lines.map(line =>
-    line
-      .replace(/</g,'&lt;').replace(/>/g,'&gt;')
-      .replace(/#(\w+)/g, '<span style="color:var(--accent);cursor:pointer;" onclick="handleSearch(\'#$1\')">#$1</span>')
-      .replace(/\$([A-Za-z]{1,6})/g, (m, t) => `<span style="color:#10b981;cursor:pointer;font-weight:600;" onclick="handleSearch('$${t}')">$${t}</span>`)
-      .replace(/@(\w+)/g, '<span style="color:var(--accent);">@$1</span>')
-  );
-  let result = '';
-  for (let i = 0; i < escaped.length; i++) {
-    if (escaped[i] === '' && i > 0 && escaped[i-1] === '') {
-      result += '<div style="height:10px;"></div>';
-    } else {
-      result += (i > 0 ? '<br>' : '') + escaped[i];
-    }
-  }
-  return result;
+  return text
+    .replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/#(\w+)/g, '<span style="color:var(--accent);cursor:pointer;" onclick="handleSearch(\'#$1\')">#$1</span>')
+    .replace(/\$([A-Za-z]{1,6})/g, (m, t) => `<span style="color:#10b981;cursor:pointer;font-weight:600;" onclick="handleSearch('$${t}')">$${t}</span>`)
+    .replace(/@(\w+)/g, '<span style="color:var(--accent);">@$1</span>')
+    .replace(/\n\n+/g, '</p><p style="margin-top:10px;">')
+    .replace(/\n/g, '<br>');
 }
 
 // Strip bilingual / secondary names from location strings (take only text before first "/" or "(")
@@ -3044,13 +3034,15 @@ function renderPost(post) {
             ${showFollowBtn ? `<button onclick="OMH.followUser('${post.author}')" style="background:${isFollowingAuthor?'transparent':'rgba(79,110,247,.15)'};color:${isFollowingAuthor?'var(--muted)':'var(--accent)'};border:1px solid ${isFollowingAuthor?'var(--border)':'rgba(79,110,247,.4)'};border-radius:20px;font-size:11px;font-weight:600;padding:2px 10px;cursor:pointer;font-family:'Sora',sans-serif;transition:all .15s;" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">${isFollowingAuthor ? 'Following' : '+ Follow'}</button>` : ''}
           </div>
           <div style="margin-top:6px;font-size:15px;line-height:1.55;word-break:break-word;">${renderContent(post.content)}</div>
-          ${(() => {
-            const streamUid = post.streamUid || (post.image && (post.image.match(/videodelivery\.net\/([a-f0-9]{32,})/i)||[])[1]) || null;
-            if (streamUid) return renderStreamVideo(streamUid);
-            if (!post.image) return '';
-            if (post.image.match(/\.(mp4|webm|mov|m3u8)(\?|$)/i)) return `<video controls style="width:100%;border-radius:12px;margin-top:12px;max-height:400px;border:1px solid var(--border);" src="${post.image}"></video>`;
-            return `<img class="post-img" src="${post.image}" alt="post" loading="lazy" />`;
-          })()}
+          ${post.image ? (
+            post.streamUid
+              ? renderStreamVideo(post.streamUid)
+              : post.image.includes('videodelivery.net') || post.image.includes('iframe.videodelivery.net')
+                ? (() => { const uid = post.image.replace(/^.*videodelivery\.net\//,'').split('/')[0].split('?')[0]; return uid ? renderStreamVideo(uid) : ''; })()
+                : post.image.match(/\.(mp4|webm|mov)(\?|$)/i)
+                  ? `<video controls style="width:100%;border-radius:12px;margin-top:12px;max-height:400px;border:1px solid var(--border);" src="${post.image}"></video>`
+                  : `<img class="post-img" src="${post.image}" alt="post" loading="lazy" />`
+          ) : ''}
           ${quotedBlock}
           ${voteHtml}
           ${repliesHtml}
