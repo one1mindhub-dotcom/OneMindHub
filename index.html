@@ -2545,20 +2545,8 @@ function avatarColor(username) {
   return colors[h];
 }
 
-function renderStreamVideo(streamUid, postId) {
-  const cid = 'vid-' + postId.replace(/[^a-z0-9]/gi, '');
-  const placeholder = `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;color:var(--muted);font-size:12px;"><span style="font-size:22px;">⏳</span><span>Video processing…</span><span style="font-size:11px;text-align:center;padding:0 16px;">Usually ready within 1–5 minutes</span><button onclick="location.reload()" style="margin-top:6px;background:var(--glow);border:1px solid var(--accent);color:var(--accent);border-radius:8px;padding:5px 14px;font-size:11px;cursor:pointer;font-family:'Sora',sans-serif;">Refresh</button></div>`;
-  setTimeout(() => {
-    const wrap = document.getElementById(cid);
-    if (!wrap) return;
-    const img = new Image();
-    img.onload = () => {
-      wrap.innerHTML = `<iframe src="https://iframe.videodelivery.net/${streamUid}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen="true"></iframe>`;
-    };
-    img.onerror = () => { wrap.innerHTML = placeholder; };
-    img.src = `https://videodelivery.net/${streamUid}/thumbnails/thumbnail.jpg?time=2s&height=80&t=${Date.now()}`;
-  }, 0);
-  return `<div id="${cid}" style="position:relative;padding-top:56.25%;margin-top:12px;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--surface);">${placeholder}</div>`;
+function renderStreamVideo(streamUid) {
+  return `<div style="position:relative;padding-top:56.25%;margin-top:12px;border-radius:12px;overflow:hidden;border:1px solid var(--border);"><iframe src="https://iframe.videodelivery.net/${streamUid}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen="true"></iframe></div>`;
 }
 
 function renderContent(text) {
