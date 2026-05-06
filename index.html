@@ -1957,15 +1957,10 @@ async function uploadToBackblaze(file) {
           return;
         }
 
-        const labelEl = document.getElementById('vid-status-label');
-        const pctEl   = document.getElementById('vid-pct');
-        const barEl   = document.getElementById('vid-bar');
-        if (labelEl) labelEl.textContent = 'Processing video…';
-        if (pctEl)   pctEl.textContent   = '';
-        if (barEl) { barEl.style.transition = 'none'; barEl.style.width = '100%'; barEl.style.opacity = '0.5'; }
-
-        await new Promise(r => setTimeout(r, 15000));
-
+        const pctEl = document.getElementById('vid-pct');
+        const barEl = document.getElementById('vid-bar');
+        if (pctEl) pctEl.textContent = '100%';
+        if (barEl) barEl.style.width = '100%';
         setTimeout(() => progressEl.remove(), 400);
         resolve();
       };
