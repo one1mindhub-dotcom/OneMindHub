@@ -1957,10 +1957,15 @@ async function uploadToBackblaze(file) {
           return;
         }
 
-        const pctEl = document.getElementById('vid-pct');
-        const barEl = document.getElementById('vid-bar');
-        if (pctEl) pctEl.textContent = '100%';
-        if (barEl) barEl.style.width = '100%';
+        const labelEl = document.getElementById('vid-status-label');
+        const pctEl   = document.getElementById('vid-pct');
+        const barEl   = document.getElementById('vid-bar');
+        if (labelEl) labelEl.textContent = 'Processing video…';
+        if (pctEl)   pctEl.textContent   = '';
+        if (barEl) { barEl.style.transition = 'none'; barEl.style.width = '100%'; barEl.style.opacity = '0.5'; }
+
+        await new Promise(r => setTimeout(r, 15000));
+
         setTimeout(() => progressEl.remove(), 400);
         resolve();
       };
@@ -2564,8 +2569,8 @@ function renderStreamVideo(streamUid) {
   setTimeout(() => {
     const el = document.getElementById(cid);
     if (el && !el.querySelector('iframe')) el.innerHTML = iframeHtml;
-  }, 3000);
-  return `<div id="${cid}" style="position:relative;padding-top:56.25%;margin-top:12px;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:#000;"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;">Loading video…</div></div>`;
+  }, 1500);
+  return `<div id="${cid}" style="position:relative;padding-top:56.25%;margin-top:12px;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--surface);"></div>`;
 }
 
 function renderContent(text) {
@@ -2788,10 +2793,12 @@ function renderPost(post) {
           <div style="margin-top:6px;font-size:15px;line-height:1.55;word-break:break-word;">${renderContent(post.content)}</div>
           ${post.image ? (
             post.streamUid
-              ? renderStreamVideo(post.streamUid, post.id)
-              : post.image && (post.image.match(/\.(mp4|webm|mov)(\?|$)/i) || post.image.includes('videodelivery.net'))
-                ? ``<iframe src="https://iframe.videodelivery.net/${post.image.split('/')[3]}" style="width:100%;aspect-ratio:16/9;border-radius:12px;margin-top:12px;border:1px solid var(--border);" allow="autoplay; encrypted-media" allowfullscreen></iframe>`
-                : `<img class="post-img" src="${post.image}" alt="post" loading="lazy" />`
+              ? renderStreamVideo(post.streamUid)
+              : post.image.includes('videodelivery.net')
+                ? renderStreamVideo(post.image.split('/').find(s => s.length === 32) || post.image.split('/')[3])
+                : post.image.match(/\.(mp4|webm|mov)(\?|$)/i)
+                  ? `<video controls style="width:100%;border-radius:12px;margin-top:12px;max-height:400px;border:1px solid var(--border);" src="${post.image}"></video>`
+                  : `<img class="post-img" src="${post.image}" alt="post" loading="lazy" />`
           ) : ''}
           ${quotedBlock}
           ${voteHtml}
