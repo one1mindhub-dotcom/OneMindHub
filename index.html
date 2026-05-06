@@ -1957,62 +1957,17 @@ async function uploadToBackblaze(file) {
           return;
         }
 
-        // ── Poll until Cloudflare Stream reports readyToStream ───────────────
         const labelEl = document.getElementById('vid-status-label');
         const pctEl   = document.getElementById('vid-pct');
         const barEl   = document.getElementById('vid-bar');
         if (labelEl) labelEl.textContent = 'Processing video…';
         if (pctEl)   pctEl.textContent   = '';
+        if (barEl) { barEl.style.transition = 'none'; barEl.style.width = '100%'; barEl.style.opacity = '0.5'; }
 
-        if (barEl) {
-          barEl.style.transition = 'none';
-          barEl.style.width = '100%';
-          barEl.style.opacity = '0.5';
-        }
-
-        const MAX_ATTEMPTS  = 30;   // 30 × 2 s = 60 s max wait
-        const POLL_INTERVAL = 2000;
-
-        let attempts = 0;
-        let ready = false;
-
-        console.log('[Stream] TUS upload done. Starting readyToStream poll. streamUid:', streamUid);
-
-        while (attempts < MAX_ATTEMPTS) {
-          await new Promise(r => setTimeout(r, POLL_INTERVAL));
-          attempts++;
-          console.log(`[Stream] Poll attempt ${attempts}/${MAX_ATTEMPTS} for uid: ${streamUid}`);
-          try {
-            const res = await fetch('/.netlify/functions/check-video-status', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ streamUid }),
-            });
-            console.log(`[Stream] Poll ${attempts} — HTTP ${res.status}`);
-            if (res.ok) {
-              const data = await res.json();
-              console.log(`[Stream] Poll ${attempts} — response:`, data);
-              if (data.ready) { ready = true; break; }
-            } else {
-              const text = await res.text();
-              console.warn(`[Stream] Poll ${attempts} — non-OK response:`, text);
-            }
-          } catch (err) {
-            console.warn(`[Stream] Poll ${attempts} — fetch error:`, err.message);
-          }
-        }
+        await new Promise(r => setTimeout(r, 15000));
 
         setTimeout(() => progressEl.remove(), 400);
-
-        if (!ready) {
-          console.error(`[Stream] Timed out after ${attempts} attempts. Video not ready.`);
-          reject(new Error('Video processing timed out. Please try again.'));
-          return;
-        }
-
-        console.log(`[Stream] readyToStream confirmed on attempt ${attempts}.`);
         resolve();
-        // ── end polling block ────────────────────────────────────────────────
       };
 
       xhr.onerror = () => {
