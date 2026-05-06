@@ -2563,7 +2563,7 @@ function avatarColor(username) {
 
 function renderStreamVideo(streamUid) {
   const cid = 'sv-' + streamUid.replace(/[^a-z0-9]/gi,'').slice(-14);
-  const iframeHtml = `<iframe src="https://iframe.videodelivery.net/${streamUid}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen="true"></iframe>`;
+  const iframeHtml = `<iframe src="https://iframe.videodelivery.net/${streamUid}?preload=auto" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen="true"></iframe>`;
   setTimeout(() => {
     const el = document.getElementById(cid);
     if (el && !el.querySelector('iframe')) el.innerHTML = iframeHtml;
@@ -3094,7 +3094,7 @@ function renderProfileContent() {
         const isVideo = p.streamUid || (p.image && p.image.includes('videodelivery.net'));
         const thumbUid = p.streamUid || (p.image && p.image.includes('videodelivery.net') ? (p.image.split('/').find(s => s.length === 32) || p.image.split('/')[3]) : null);
         const thumbSrc = isVideo ? `https://videodelivery.net/${thumbUid}/thumbnails/thumbnail.jpg?time=0s` : p.image;
-        return `<div style="position:relative;aspect-ratio:1;overflow:hidden;background:var(--surface);cursor:pointer;" onclick="openReply('${p.id}')">
+        return `<div style="position:relative;aspect-ratio:1;overflow:hidden;background:var(--surface);cursor:pointer;" onclick="navigate('feed');setTimeout(()=>{const el=document.getElementById('post-${p.id}');if(el)el.scrollIntoView({behavior:'smooth',block:'center'});},300)">
           <img src="${thumbSrc}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
           <div style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;background:var(--surface);color:var(--muted);font-size:24px;">▶</div>
           ${isVideo ? '<div style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,.6);border-radius:4px;font-size:10px;padding:2px 5px;color:#fff;">▶</div>' : ''}
