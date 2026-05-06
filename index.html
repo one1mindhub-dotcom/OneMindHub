@@ -4671,29 +4671,42 @@ document.addEventListener('scroll', function() { closeAllMenus(); closeRepostMen
 async function doForgotPassword() {
   const email = document.getElementById('forgot-pw-email').value.trim().toLowerCase();
   if (!email) { toast('Please enter your email address.', 'error'); return; }
-  try {
-    await sb.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin + '/?reset=1'
-    });
-  } catch(err) { /* silent — never reveal if email is registered */ }
-  // Always show same response to prevent email enumeration
-  toast('If that email is registered, a reset link has been sent.', 'success', 5000);
+
+  // Check if email exists in our users table
+  const { data } = await sb.from('users').select('username, email').eq('email', email).single().catch(() => ({ data: null }));
+
+  if (data) {
+    // Use Supabase Auth reset — works if user also has a Supabase Auth account
+    // For plain-table users, this sends to the email regardless
+    try {
+      await sb.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + '/?reset=1'
+      });
+    } catch(e) {}
+  }
+
+  // Always same message — prevent email enumeration
+  toast('If that email is registered, a reset link has been sent. Check your inbox.', 'success', 6000);
   closeModal('forgot-password');
 }
 
 async function doForgotUsername() {
   const email = document.getElementById('forgot-user-email').value.trim().toLowerCase();
   if (!email) { toast('Please enter your email address.', 'error'); return; }
-  try {
-    const { data } = await sb.from('users').select('username').eq('email', email).single();
-    if (data && data.username) {
-      // Send via password reset email flow as carrier — never show username in UI
+
+  // Look up username — but never display it in the UI
+  const { data } = await sb.from('users').select('username').eq('email', email).single().catch(() => ({ data: null }));
+
+  if (data && data.username) {
+    // Attempt to send via Supabase Auth email (works if auth is configured)
+    try {
       await sb.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin + '/?username_hint=1'
+        redirectTo: window.location.origin + '/?username=' + encodeURIComponent(data.username)
       });
-    }
-  } catch(err) { /* silent */ }
-  // Always identical response to prevent enumeration
+    } catch(e) {}
+  }
+
+  // Always identical response
   toast("If that email is registered, we've sent your username to your inbox.", 'success', 6000);
   closeModal('forgot-username');
 }
