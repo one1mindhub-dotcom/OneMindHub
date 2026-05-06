@@ -1,0 +1,2 @@
+/api/upload/* https://twilight-leaf-9b55.one-1mind-hub.workers.dev/:splat 200
+/api/upload  https://twilight-leaf-9b55.one-1mind-hub.workers.dev/ 200
