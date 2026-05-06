@@ -1961,10 +1961,8 @@ async function uploadToBackblaze(file) {
         const pctEl   = document.getElementById('vid-pct');
         const barEl   = document.getElementById('vid-bar');
         if (labelEl) labelEl.textContent = 'Processing video…';
-        if (pctEl)   pctEl.textContent   = '';
-        if (barEl) { barEl.style.transition = 'none'; barEl.style.width = '100%'; barEl.style.opacity = '0.5'; }
-
-        await new Promise(r => setTimeout(r, 15000));
+        if (pctEl)   pctEl.textContent   = '100%';
+        if (barEl) { barEl.style.transition = 'width .4s ease'; barEl.style.width = '100%'; barEl.style.opacity = '1'; }
 
         setTimeout(() => progressEl.remove(), 400);
         resolve();
@@ -3092,13 +3090,20 @@ function renderProfileContent() {
       return;
     }
     el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3px;margin:-1px;">${
-      mediaPosts.map(p => `<div style="position:relative;aspect-ratio:1;overflow:hidden;background:var(--surface);cursor:pointer;" onclick="openReply('${p.id}')">
-        <img src="${p.image}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" loading="lazy" />
-        ${p.vote?'<div style="position:absolute;top:6px;left:6px;background:rgba(0,0,0,.6);border-radius:4px;font-size:10px;padding:2px 5px;">🗳️</div>':''}
-        <div style="position:absolute;bottom:4px;right:6px;display:flex;gap:6px;align-items:center;">
-          <span style="font-size:10px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.7);">❤️ ${p.likes.length}</span>
-        </div>
-      </div>`).join('')
+      mediaPosts.map(p => {
+        const isVideo = p.streamUid || (p.image && p.image.includes('videodelivery.net'));
+        const thumbUid = p.streamUid || (p.image && p.image.includes('videodelivery.net') ? (p.image.split('/').find(s => s.length === 32) || p.image.split('/')[3]) : null);
+        const thumbSrc = isVideo ? `https://videodelivery.net/${thumbUid}/thumbnails/thumbnail.jpg?time=0s` : p.image;
+        return `<div style="position:relative;aspect-ratio:1;overflow:hidden;background:var(--surface);cursor:pointer;" onclick="openReply('${p.id}')">
+          <img src="${thumbSrc}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
+          <div style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;background:var(--surface);color:var(--muted);font-size:24px;">▶</div>
+          ${isVideo ? '<div style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,.6);border-radius:4px;font-size:10px;padding:2px 5px;color:#fff;">▶</div>' : ''}
+          ${p.vote ? '<div style="position:absolute;top:6px;left:6px;background:rgba(0,0,0,.6);border-radius:4px;font-size:10px;padding:2px 5px;">🗳️</div>' : ''}
+          <div style="position:absolute;bottom:4px;right:6px;display:flex;gap:6px;align-items:center;">
+            <span style="font-size:10px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.7);">❤️ ${p.likes.length}</span>
+          </div>
+        </div>`;
+      }).join('')
     }</div>`;
   }
 }
