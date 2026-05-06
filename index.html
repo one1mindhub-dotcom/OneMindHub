@@ -211,9 +211,6 @@ label{font-size:13px;color:var(--muted);font-weight:500;margin-bottom:5px;displa
 /* Early version notice */
 .early-notice{background:rgba(79,110,247,.06);border:1px solid rgba(79,110,247,.2);border-radius:10px;padding:10px 14px;font-size:11px;color:var(--muted);line-height:1.5}
 
-/* Community Energy badge */
-.energy-badge{display:inline-flex;align-items:center;gap:4px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:20px;padding:2px 9px;font-size:11px;font-weight:700;color:#f59e0b;}
-
 /* Edit/delete actions */
 .post-menu{position:relative}
 .post-menu-dropdown{position:absolute;top:100%;right:0;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:140px;z-index:20;box-shadow:0 8px 24px rgba(0,0,0,.4);display:none}
@@ -1058,8 +1055,8 @@ document.addEventListener('visibilitychange', async () => {
         <div class="section-title" style="margin-bottom:12px;">Trending Topics</div>
         <div id="trending-list"></div>
         <div style="margin-top:16px;" class="early-notice">
-          <strong style="color:var(--text);">🔥 Community Energy Algorithm</strong><br>
-          How this score works: <strong style="color:var(--text);">Views (3sec+) ×1 · Votes ×10 · Comments ×5</strong> — then divided by time since posted (to the power of 0.8). That's it. No secret algorithm. No platform manipulation. <span class="link" onclick="navigate('how-it-works')">Full explanation →</span>
+          <strong style="color:var(--text);">🔭 Honest Trending Algorithm</strong><br>
+          Sorted purely by: post count + vote participants in last 24 hours. No weighting. No promoted content. Same for everyone. <span class="link" onclick="alert('Formula: (posts_with_tag_24h + vote_participants_24h) / hours_since_last_activity\n\nNo personalization. No promoted content. No black box.')">See formula</span>
         </div>
       </div>
     </div>
@@ -1106,79 +1103,6 @@ document.addEventListener('visibilitychange', async () => {
       <div id="bookmarks-list" style="padding:0;"></div>
     </div>
 
-    <!-- HOW IT WORKS PAGE -->
-    <div id="page-how-it-works" class="page">
-      <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
-        <div style="font-size:18px;font-weight:700;">🔥 How OneMind Works</div>
-        <div style="font-size:13px;color:var(--muted);margin-top:4px;">Full transparency. No black boxes.</div>
-      </div>
-      <div style="padding:20px;max-width:600px;">
-
-        <div style="background:var(--card);border:1px solid rgba(245,158,11,.3);border-radius:16px;padding:20px;margin-bottom:20px;">
-          <div style="font-size:17px;font-weight:700;margin-bottom:6px;">🔥 Community Energy Score</div>
-          <div style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:14px;">Every post on OneMind has a visible energy score. It's calculated publicly from three signals:</div>
-          <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">
-            <div style="display:flex;align-items:center;gap:12px;background:var(--surface);border-radius:10px;padding:12px 14px;">
-              <div style="font-size:22px;">👁️</div>
-              <div><div style="font-size:14px;font-weight:700;">Qualified Views <span style="color:#f59e0b;">× 1</span></div><div style="font-size:12px;color:var(--muted);margin-top:2px;">Counted when a post is on-screen for 3 seconds or more. Scrolling past quickly doesn't count.</div></div>
-            </div>
-            <div style="display:flex;align-items:center;gap:12px;background:var(--surface);border-radius:10px;padding:12px 14px;">
-              <div style="font-size:22px;">❤️</div>
-              <div><div style="font-size:14px;font-weight:700;">Votes (Likes) <span style="color:#f59e0b;">× 10</span></div><div style="font-size:12px;color:var(--muted);margin-top:2px;">Each vote/like carries 10× more weight than a view, reflecting active community endorsement.</div></div>
-            </div>
-            <div style="display:flex;align-items:center;gap:12px;background:var(--surface);border-radius:10px;padding:12px 14px;">
-              <div style="font-size:22px;">💬</div>
-              <div><div style="font-size:14px;font-weight:700;">Comments <span style="color:#f59e0b;">× 5</span></div><div style="font-size:12px;color:var(--muted);margin-top:2px;">Each comment signals meaningful engagement — more than a view, less than a vote.</div></div>
-            </div>
-          </div>
-          <div style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:14px;font-size:13px;">
-            <div style="font-weight:700;color:var(--text);margin-bottom:6px;">⚡ Time Decay Formula</div>
-            <div style="font-family:'DM Mono',monospace;font-size:12px;color:#f59e0b;margin-bottom:8px;letter-spacing:.02em;">Score = (Views×1 + Votes×10 + Comments×5) ÷ HoursAge<sup>0.8</sup></div>
-            <div style="font-size:12px;color:var(--muted);line-height:1.6;">Scores decay over time so fresh, relevant content naturally rises. The 0.8 exponent means decay is gradual — a great post from yesterday still outscores mediocre content posted an hour ago.</div>
-          </div>
-        </div>
-
-        <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:20px;">
-          <div style="font-size:17px;font-weight:700;margin-bottom:12px;">📋 Where Each Sort is Used</div>
-          <div style="display:flex;flex-direction:column;gap:10px;">
-            <div style="display:flex;align-items:flex-start;gap:10px;font-size:13px;padding:10px 0;border-bottom:1px solid var(--border);">
-              <span style="font-weight:700;color:var(--accent);min-width:80px;">Home Feed</span>
-              <span style="color:var(--muted);">Strictly <strong style="color:var(--text);">chronological</strong>. Newest posts first. No ranking. No curation. Your feed is not shaped by any algorithm.</span>
-            </div>
-            <div style="display:flex;align-items:flex-start;gap:10px;font-size:13px;padding:10px 0;border-bottom:1px solid var(--border);">
-              <span style="font-weight:700;color:var(--accent);min-width:80px;">Explore</span>
-              <span style="color:var(--muted);">Sorted by <strong style="color:var(--text);">Community Energy Score</strong> (highest first) within your chosen region filter.</span>
-            </div>
-            <div style="display:flex;align-items:flex-start;gap:10px;font-size:13px;padding:10px 0;border-bottom:1px solid var(--border);">
-              <span style="font-weight:700;color:var(--accent);min-width:80px;">Trending</span>
-              <span style="color:var(--muted);">Topics ranked by <strong style="color:var(--text);">post count + vote participants</strong> in your region. No promotional weighting.</span>
-            </div>
-            <div style="display:flex;align-items:flex-start;gap:10px;font-size:13px;padding:10px 0;">
-              <span style="font-weight:700;color:var(--accent);min-width:80px;">Near Me</span>
-              <span style="color:var(--muted);">Geo-filtered to your area, then sorted by <strong style="color:var(--text);">Community Energy Score</strong>. Most resonant local content first.</span>
-            </div>
-          </div>
-        </div>
-
-        <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:20px;">
-          <div style="font-size:17px;font-weight:700;margin-bottom:10px;">🚫 What We Never Do</div>
-          <div style="display:flex;flex-direction:column;gap:8px;">
-            <div style="display:flex;gap:8px;font-size:13px;align-items:flex-start;"><span style="color:var(--red);font-size:16px;">✕</span><span>Shadowban or suppress any content based on viewpoint</span></div>
-            <div style="display:flex;gap:8px;font-size:13px;align-items:flex-start;"><span style="color:var(--red);font-size:16px;">✕</span><span>Boost posts based on advertiser payments or subscriptions</span></div>
-            <div style="display:flex;gap:8px;font-size:13px;align-items:flex-start;"><span style="color:var(--red);font-size:16px;">✕</span><span>Personalize ranking based on your behavior profile</span></div>
-            <div style="display:flex;gap:8px;font-size:13px;align-items:flex-start;"><span style="color:var(--red);font-size:16px;">✕</span><span>Weight votes differently based on account tier or subscription</span></div>
-            <div style="display:flex;gap:8px;font-size:13px;align-items:flex-start;"><span style="color:var(--red);font-size:16px;">✕</span><span>Run any hidden ranking factor not described on this page</span></div>
-          </div>
-        </div>
-
-        <div style="background:var(--card);border:1px solid rgba(16,185,129,.3);border-radius:16px;padding:20px;">
-          <div style="font-size:17px;font-weight:700;margin-bottom:8px;">🗳️ One Person. One Vote. Always.</div>
-          <div style="font-size:13px;color:var(--muted);line-height:1.7;">Geo-verified identity means every vote carries equal weight regardless of follower count, subscription tier, or account age. Money buys tools — never reach or vote weight. The civic layer is always free and equal.</div>
-        </div>
-
-      </div>
-    </div>
-
   </main>
 
   <!-- RIGHT PANEL -->
@@ -1198,15 +1122,15 @@ document.addEventListener('visibilitychange', async () => {
     </div>
     <div style="margin-top:16px;background:var(--card);border:1px solid rgba(245,158,11,.3);border-radius:12px;padding:14px;">
       <div style="font-size:11px;font-weight:700;color:#f59e0b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">🔥 Community Energy Algorithm</div>
-      <div style="font-size:11px;color:var(--muted);line-height:1.8;">
-        <div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>Card view (3sec+)</span><span style="color:var(--text);font-weight:600;">×1 pt</span></div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>Video 25% watched</span><span style="color:var(--text);font-weight:600;">+2 pts</span></div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>Video 50% watched</span><span style="color:var(--text);font-weight:600;">+3 pts</span></div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>Video 75% watched</span><span style="color:var(--text);font-weight:600;">+4 pts</span></div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>Video 100% watched</span><span style="color:var(--text);font-weight:600;">+5 pts</span></div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>Votes / Likes</span><span style="color:var(--text);font-weight:600;">×10 pts</span></div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.9;">
+        <div style="display:flex;justify-content:space-between;"><span>Card view (3sec+)</span><span style="color:var(--text);font-weight:600;">+1 pt</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>Video 25% watched</span><span style="color:var(--text);font-weight:600;">+2 pts</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>Video 50% watched</span><span style="color:var(--text);font-weight:600;">+3 pts</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>Video 75% watched</span><span style="color:var(--text);font-weight:600;">+4 pts</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>Video 100% watched</span><span style="color:var(--text);font-weight:600;">+5 pts</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>Votes / Likes</span><span style="color:var(--text);font-weight:600;">×10 pts</span></div>
         <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span>Comments</span><span style="color:var(--text);font-weight:600;">×5 pts</span></div>
-        <div style="border-top:1px solid var(--border);padding-top:7px;font-size:10px;color:var(--muted);">Divided by time since posted<sup>0.8</sup>. No secret ranking. No promoted content.</div>
+        <div style="border-top:1px solid var(--border);padding-top:7px;font-size:10px;">Score ÷ time<sup>0.8</sup> — No secret ranking. No promoted content.</div>
       </div>
     </div>
   </aside>
@@ -1232,10 +1156,6 @@ document.addEventListener('visibilitychange', async () => {
           </button>
         </div></div>
       <button class="btn-primary" onclick="doLogin()" style="width:100%;padding:12px;">Sign In</button>
-      <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:2px;">
-        <span class="link" onclick="closeModal('login');showModal('forgot-password')" style="color:var(--muted);">Forgot password?</span>
-        <span class="link" onclick="closeModal('login');showModal('forgot-username')" style="color:var(--muted);">Forgot username?</span>
-      </div>
       <button class="btn-ghost" onclick="closeModal('login');showModal('signup')" style="width:100%;padding:12px;">Create Account</button>
     </div>
     <div style="text-align:center;margin-top:12px;font-size:12px;color:var(--muted);">Demo: <span class="mono">demo</span> / <span class="mono">demo123</span></div>
@@ -1744,7 +1664,7 @@ function closeModalOnOverlay(e, name) {
 // ESC key + delegated close button handler
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
-    ['login','signup','vote','premium','reply','edit','gps','compose','quote','forgot-password','forgot-username'].forEach(m => {
+    ['login','signup','vote','premium','reply','edit','gps','compose','quote'].forEach(m => {
       const el = document.getElementById('modal-'+m);
       if (el && el.style.display !== 'none') closeModal(m);
     });
@@ -3152,7 +3072,6 @@ function renderPost(post) {
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               ${post.views||0}
             </div>
-            ${renderEnergyBadge(post)}
           </div>
         </div>
       </div>
@@ -3161,31 +3080,6 @@ function renderPost(post) {
 }
 
 // Feed
-// ── Community Energy Score ───────────────────────────────────────────────────
-// Formula: (qualifiedViews×1 + votes×10 + comments×5) / hoursAge^0.8
-// qualifiedViews = views tracked with 3sec+ on-screen (approximated from post.views)
-function energyScore(post) {
-  const views    = post.views || 0;
-  const votes    = (post.likes || []).length;  // "votes" = likes in current schema
-  const comments = (post.replies || []).length;
-  const raw      = views * 1 + votes * 10 + comments * 5;
-  const ageMs    = Date.now() - new Date(post.timestamp);
-  const ageHours = Math.max(ageMs / 3600000, 0.1); // floor at 6min to avoid div-by-zero
-  return raw / Math.pow(ageHours, 0.8);
-}
-
-function formatEnergy(score) {
-  if (score >= 1000000) return (score/1000000).toFixed(1) + 'M';
-  if (score >= 1000)    return (score/1000).toFixed(1) + 'K';
-  return Math.round(score).toString();
-}
-
-function renderEnergyBadge(post) {
-  const score = energyScore(post);
-  if (score < 0.5) return ''; // hide if essentially zero
-  return `<span class="energy-badge" title="Community Energy: Views×1 + Votes×10 + Comments×5, with time decay">🔥 ${formatEnergy(score)} Energy</span>`;
-}
-
 function renderFeed() {
   // Only update the feed list — sidebar/rightpanel are updated by renderApp/navigate
   const el = document.getElementById('feed-list');
@@ -3281,46 +3175,6 @@ function updateStateField(countryVal, stateFieldId) {
   }
 }
 
-async function doForgotPassword() {
-  const email = document.getElementById('forgot-pw-email').value.trim().toLowerCase();
-  if (!email) { toast('Please enter your email address.', 'error'); return; }
-  try {
-    const { error } = await sb.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin + '/?reset=1'
-    });
-    if (error) throw error;
-    toast('Reset link sent! Check your email inbox.', 'success', 5000);
-    closeModal('forgot-password');
-  } catch(err) {
-    // Even if email not found, show success to prevent email enumeration
-    toast('If that email is registered, a reset link has been sent.', 'success', 5000);
-    closeModal('forgot-password');
-  }
-}
-
-async function doForgotUsername() {
-  const email = document.getElementById('forgot-user-email').value.trim().toLowerCase();
-  if (!email) { toast('Please enter your email address.', 'error'); return; }
-  try {
-    // Check if email exists (but never reveal username in UI — send email instead)
-    const { data } = await sb.from('users').select('username,email').eq('email', email).single();
-    // Regardless of whether email was found, show same message to prevent email enumeration
-    // If found, trigger a Supabase email with their username (uses password reset flow as carrier)
-    if (data && data.username) {
-      // Use password reset email as the delivery mechanism — user gets an email and sees username there
-      await sb.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin + '/?username_hint=1'
-      });
-    }
-  } catch(err) {
-    // Silently swallow errors — never reveal if email is registered
-  }
-  // Always show same response regardless of outcome
-  toast('If that email is registered, we\'ve sent your username to your inbox.', 'success', 6000);
-  closeModal('forgot-username');
-}
-
-
 function renderApp() {
   renderSidebar();
   renderFeed();
@@ -3340,11 +3194,9 @@ function renderNearMe() {
   if (locEl) locEl.innerHTML = `<span class="gps-indicator"><span class="gps-dot"></span>Your area: ${cleanLoc(u.city)}, ${cleanLoc(u.state)}, ${cleanLoc(u.country)}</span>`;
 
   let posts = OMH.posts.filter(p => !p.removed);
-  if (nearmeLevel === 'city') posts = posts.filter(p => p.city && p.city.toLowerCase() === u.city.toLowerCase());
-  else if (nearmeLevel === 'state') posts = posts.filter(p => p.state && p.state.toLowerCase() === u.state.toLowerCase());
-  else posts = posts.filter(p => p.country && p.country.toLowerCase() === u.country.toLowerCase());
-  // Sort by Community Energy score — geo-filtered + highest energy first
-  posts = posts.slice().sort((a, b) => energyScore(b) - energyScore(a));
+  if (nearmeLevel === 'city') posts = posts.filter(p => p.city.toLowerCase() === u.city.toLowerCase());
+  else if (nearmeLevel === 'state') posts = posts.filter(p => p.state.toLowerCase() === u.state.toLowerCase());
+  else posts = posts.filter(p => p.country.toLowerCase() === u.country.toLowerCase());
 
   el.innerHTML = posts.length
     ? posts.map(renderPost).join('')
@@ -3734,8 +3586,6 @@ function renderExploreResults() {
 
   let posts = OMH.posts.filter(p => !p.removed && postMatchesExploreRegions(p));
   if (exploreMode === 'votes') posts = posts.filter(p => p.vote && new Date(p.vote.closesAt) > new Date());
-  // Sort by Community Energy score (highest first)
-  posts = posts.slice().sort((a, b) => energyScore(b) - energyScore(a));
 
   if (posts.length === 0) {
     const label = exploreRegions.length ? `in ${exploreRegions.map(r=>r.value||'global').join(', ')}` : '';
@@ -4237,24 +4087,12 @@ async function confirmDeleteAccount() {
   const typed = prompt('Type DELETE to permanently delete your account:');
   if (typed !== 'DELETE') { toast('Account deletion cancelled.', 'info'); return; }
   const u = OMH.currentUser;
-  if (!u) return;
-  toast('Deleting account…', 'info', 8000);
-  try {
-    // Delete posts authored by this user
-    const { error: postErr } = await sb.from('posts').delete().eq('author', u.username);
-    if (postErr) console.error('Post deletion error:', postErr);
-    // Delete notifications sent to or from this user
-    await sb.from('notifications').delete().eq('to_user', u.username);
-    await sb.from('notifications').delete().eq('from_user', u.username);
-    // Delete the user record
-    const { error: userErr } = await sb.from('users').delete().eq('username', u.username);
-    if (userErr) { toast('Deletion failed: ' + userErr.message, 'error'); return; }
-    OMH.logout();
-    toast('Your account has been permanently deleted. Sorry to see you go.', 'info', 6000);
-    navigate('feed');
-  } catch (err) {
-    toast('Deletion failed: ' + err.message, 'error');
-  }
+  await sb.from('posts').delete().eq('author', u.username);
+  await sb.from('notifications').delete().eq('recipient', u.username);
+  await sb.from('users').delete().eq('username', u.username);
+  OMH.logout();
+  toast('Your account has been deleted. Sorry to see you go.', 'info', 5000);
+  navigate('feed');
 }
 
 // Right panel
@@ -4759,44 +4597,5 @@ document.addEventListener('click', function(e) {
 });
 document.addEventListener('scroll', function() { closeAllMenus(); closeRepostMenu(); }, true);
 </script>
-
-<!-- FORGOT PASSWORD -->
-<div id="modal-forgot-password" class="overlay" style="display:none;" onclick="closeModalOnOverlay(event,'forgot-password')" data-overlay-close="forgot-password">
-  <div class="modal" style="position:relative;max-width:400px;">
-    <button data-close="forgot-password" class="modal-close-btn">✕</button>
-    <div style="text-align:center;margin-bottom:20px;">
-      <div style="font-size:32px;margin-bottom:8px;">🔑</div>
-      <div style="font-size:20px;font-weight:700;">Reset Password</div>
-      <div style="font-size:13px;color:var(--muted);margin-top:6px;">Enter your email and we'll send a reset link</div>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:14px;">
-      <div><label>Email Address</label><input class="input-field" id="forgot-pw-email" type="email" placeholder="you@example.com" onkeydown="if(event.key==='Enter')doForgotPassword()" /></div>
-      <button class="btn-primary" onclick="doForgotPassword()" style="width:100%;padding:12px;">Send Reset Link</button>
-      <div style="text-align:center;font-size:12px;color:var(--muted);">
-        Remember your password? <span class="link" onclick="closeModal('forgot-password');showModal('login')">Sign in</span>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- FORGOT USERNAME -->
-<div id="modal-forgot-username" class="overlay" style="display:none;" onclick="closeModalOnOverlay(event,'forgot-username')" data-overlay-close="forgot-username">
-  <div class="modal" style="position:relative;max-width:400px;">
-    <button data-close="forgot-username" class="modal-close-btn">✕</button>
-    <div style="text-align:center;margin-bottom:20px;">
-      <div style="font-size:32px;margin-bottom:8px;">👤</div>
-      <div style="font-size:20px;font-weight:700;">Find Your Username</div>
-      <div style="font-size:13px;color:var(--muted);margin-top:6px;">Enter your email and we'll send your username to your inbox</div>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:14px;">
-      <div><label>Email Address</label><input class="input-field" id="forgot-user-email" type="email" placeholder="you@example.com" onkeydown="if(event.key==='Enter')doForgotUsername()" /></div>
-      <button class="btn-primary" onclick="doForgotUsername()" style="width:100%;padding:12px;">Find Username</button>
-      <div style="text-align:center;font-size:12px;color:var(--muted);">
-        Remember your username? <span class="link" onclick="closeModal('forgot-username');showModal('login')">Sign in</span>
-      </div>
-    </div>
-  </div>
-</div>
-
 </body>
 </html>
