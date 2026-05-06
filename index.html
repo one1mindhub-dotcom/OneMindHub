@@ -2804,8 +2804,8 @@ function renderPost(post) {
           ${post.image ? (
             post.streamUid
               ? renderStreamVideo(post.streamUid, post.id)
-              : post.image.match(/\.(mp4|webm|mov)(\?|$)/i)
-                ? `<video controls style="width:100%;border-radius:12px;margin-top:12px;max-height:400px;border:1px solid var(--border);" src="${post.image}"></video>`
+              : post.image && (post.image.match(/\.(mp4|webm|mov)(\?|$)/i) || post.image.includes('videodelivery.net'))
+                ? ``<iframe src="https://iframe.videodelivery.net/${post.image.split('/')[3]}" style="width:100%;aspect-ratio:16/9;border-radius:12px;margin-top:12px;border:1px solid var(--border);" allow="autoplay; encrypted-media" allowfullscreen></iframe>`
                 : `<img class="post-img" src="${post.image}" alt="post" loading="lazy" />`
           ) : ''}
           ${quotedBlock}
