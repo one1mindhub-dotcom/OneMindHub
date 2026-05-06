@@ -48,9 +48,11 @@ exports.handler = async (event) => {
     const data = await res.json();
     const ready = data?.result?.readyToStream === true;
 
+    // DEBUG: return full Cloudflare response so client can diagnose readyToStream issues
+    console.log('[check-video-status] CF response:', JSON.stringify(data));
     return {
       statusCode: 200,
-      body: JSON.stringify({ ready, uid: streamUid }),
+      body: JSON.stringify({ ready, uid: streamUid, debug: data }),
     };
   } catch (err) {
     return {
