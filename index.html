@@ -1159,9 +1159,12 @@ document.addEventListener('visibilitychange', async () => {
           </button>
         </div></div>
       <button class="btn-primary" onclick="doLogin()" style="width:100%;padding:12px;">Sign In</button>
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:2px;">
+        <span class="link" onclick="closeModal('login');showModal('forgot-password')" style="color:var(--muted);">Forgot password?</span>
+        <span class="link" onclick="closeModal('login');showModal('forgot-username')" style="color:var(--muted);">Forgot username?</span>
+      </div>
       <button class="btn-ghost" onclick="closeModal('login');showModal('signup')" style="width:100%;padding:12px;">Create Account</button>
     </div>
-    <div style="text-align:center;margin-top:12px;font-size:12px;color:var(--muted);">Demo: <span class="mono">demo</span> / <span class="mono">demo123</span></div>
     <button data-close="login" class="modal-close-btn">✕</button>
   </div>
 </div>
@@ -4115,7 +4118,8 @@ async function confirmDeleteAccount() {
   if (typed !== 'DELETE') { toast('Account deletion cancelled.', 'info'); return; }
   const u = OMH.currentUser;
   await sb.from('posts').delete().eq('author', u.username);
-  await sb.from('notifications').delete().eq('recipient', u.username);
+  await sb.from('notifications').delete().eq('to_user', u.username);
+  await sb.from('notifications').delete().eq('from_user', u.username);
   await sb.from('users').delete().eq('username', u.username);
   OMH.logout();
   toast('Your account has been deleted. Sorry to see you go.', 'info', 5000);
@@ -4623,6 +4627,76 @@ document.addEventListener('click', function(e) {
   }
 });
 document.addEventListener('scroll', function() { closeAllMenus(); closeRepostMenu(); }, true);
+</script>
+
+<!-- FORGOT PASSWORD -->
+<div id="modal-forgot-password" class="overlay" style="display:none;" onclick="closeModalOnOverlay(event,'forgot-password')" data-overlay-close="forgot-password">
+  <div class="modal" style="position:relative;max-width:400px;">
+    <button data-close="forgot-password" class="modal-close-btn">✕</button>
+    <div style="text-align:center;margin-bottom:20px;">
+      <div style="font-size:32px;margin-bottom:8px;">🔑</div>
+      <div style="font-size:20px;font-weight:700;">Reset Password</div>
+      <div style="font-size:13px;color:var(--muted);margin-top:6px;">Enter your email and we'll send a reset link</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div><label>Email Address</label><input class="input-field" id="forgot-pw-email" type="email" placeholder="you@example.com" onkeydown="if(event.key==='Enter')doForgotPassword()" /></div>
+      <button class="btn-primary" onclick="doForgotPassword()" style="width:100%;padding:12px;">Send Reset Link</button>
+      <div style="text-align:center;font-size:12px;color:var(--muted);">
+        Remember your password? <span class="link" onclick="closeModal('forgot-password');showModal('login')">Sign in</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FORGOT USERNAME -->
+<div id="modal-forgot-username" class="overlay" style="display:none;" onclick="closeModalOnOverlay(event,'forgot-username')" data-overlay-close="forgot-username">
+  <div class="modal" style="position:relative;max-width:400px;">
+    <button data-close="forgot-username" class="modal-close-btn">✕</button>
+    <div style="text-align:center;margin-bottom:20px;">
+      <div style="font-size:32px;margin-bottom:8px;">👤</div>
+      <div style="font-size:20px;font-weight:700;">Find Your Username</div>
+      <div style="font-size:13px;color:var(--muted);margin-top:6px;">Enter your email and we'll send your username to your inbox</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div><label>Email Address</label><input class="input-field" id="forgot-user-email" type="email" placeholder="you@example.com" onkeydown="if(event.key==='Enter')doForgotUsername()" /></div>
+      <button class="btn-primary" onclick="doForgotUsername()" style="width:100%;padding:12px;">Send Username</button>
+      <div style="text-align:center;font-size:12px;color:var(--muted);">
+        Remember your username? <span class="link" onclick="closeModal('forgot-username');showModal('login')">Sign in</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function doForgotPassword() {
+  const email = document.getElementById('forgot-pw-email').value.trim().toLowerCase();
+  if (!email) { toast('Please enter your email address.', 'error'); return; }
+  try {
+    await sb.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/?reset=1'
+    });
+  } catch(err) { /* silent — never reveal if email is registered */ }
+  // Always show same response to prevent email enumeration
+  toast('If that email is registered, a reset link has been sent.', 'success', 5000);
+  closeModal('forgot-password');
+}
+
+async function doForgotUsername() {
+  const email = document.getElementById('forgot-user-email').value.trim().toLowerCase();
+  if (!email) { toast('Please enter your email address.', 'error'); return; }
+  try {
+    const { data } = await sb.from('users').select('username').eq('email', email).single();
+    if (data && data.username) {
+      // Send via password reset email flow as carrier — never show username in UI
+      await sb.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + '/?username_hint=1'
+      });
+    }
+  } catch(err) { /* silent */ }
+  // Always identical response to prevent enumeration
+  toast("If that email is registered, we've sent your username to your inbox.", 'success', 6000);
+  closeModal('forgot-username');
+}
 </script>
 </body>
 </html>
