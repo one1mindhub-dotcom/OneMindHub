@@ -2561,21 +2561,11 @@ function avatarColor(username) {
 function renderStreamVideo(streamUid) {
   const cid = 'sv-' + streamUid.replace(/[^a-z0-9]/gi,'').slice(-14);
   const iframeHtml = `<iframe src="https://iframe.videodelivery.net/${streamUid}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen="true"></iframe>`;
-
-  function poll() {
+  setTimeout(() => {
     const el = document.getElementById(cid);
-    if (!el || el.querySelector('iframe')) return; // gone from DOM or already resolved
-    const img = new Image();
-    img.onload = () => {
-      const el2 = document.getElementById(cid);
-      if (el2 && !el2.querySelector('iframe')) el2.innerHTML = iframeHtml;
-    };
-    img.onerror = () => setTimeout(poll, 10000); // not ready yet — retry in 10s
-    img.src = `https://videodelivery.net/${streamUid}/thumbnails/thumbnail.jpg?time=0s&_=${Date.now()}`;
-  }
-  poll();
-
-  return `<div id="${cid}" style="position:relative;padding-top:56.25%;margin-top:12px;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--surface);"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:var(--muted);"><div style="width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;"></div><span style="font-size:11px;">Video loading…</span></div></div>`;
+    if (el && !el.querySelector('iframe')) el.innerHTML = iframeHtml;
+  }, 3000);
+  return `<div id="${cid}" style="position:relative;padding-top:56.25%;margin-top:12px;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:#000;"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;">Loading video…</div></div>`;
 }
 
 function renderContent(text) {
