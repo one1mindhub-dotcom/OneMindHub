@@ -2547,7 +2547,26 @@ function avatarColor(username) {
 }
 
 function renderStreamVideo(streamUid) {
-  return `<div style="position:relative;padding-top:56.25%;margin-top:12px;border-radius:12px;overflow:hidden;border:1px solid var(--border);"><iframe src="https://iframe.videodelivery.net/${streamUid}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen="true"></iframe></div>`;
+  const cid = 'sv-' + streamUid.replace(/[^a-z0-9]/gi,'').slice(-14);
+  const iframeHtml = `<iframe src="https://iframe.videodelivery.net/${streamUid}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen="true"></iframe>`;
+  const processingHtml = `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;color:var(--muted);font-size:12px;"><span style="font-size:22px;">⏳</span><span style="font-weight:600;">Video processing…</span><span style="font-size:11px;text-align:center;padding:0 20px;line-height:1.5;">Usually ready within 1–5 min</span><button onclick="location.reload()" style="margin-top:8px;background:var(--glow);border:1px solid var(--accent);color:var(--accent);border-radius:8px;padding:5px 14px;font-size:11px;cursor:pointer;font-family:'Sora',sans-serif;">Refresh</button></div>`;
+
+  // Poll Cloudflare thumbnail endpoint — 200 = ready, 404 = still processing
+  function poll(delays, i) {
+    if (i >= delays.length) return;
+    setTimeout(() => {
+      const el = document.getElementById(cid);
+      if (!el) return;
+      const img = new Image();
+      img.onload = () => { const e2 = document.getElementById(cid); if (e2) e2.innerHTML = iframeHtml; };
+      img.onerror = () => { const e2 = document.getElementById(cid); if (e2) e2.innerHTML = processingHtml; poll(delays, i + 1); };
+      img.src = `https://videodelivery.net/${streamUid}/thumbnails/thumbnail.jpg?time=0s&_=${i}`;
+    }, delays[i]);
+  }
+  // Check immediately, then retry at 15s, 30s, 30s, 60s intervals (up to ~3.5 min auto-retry)
+  poll([0, 15000, 30000, 30000, 60000, 60000, 60000], 0);
+
+  return `<div id="${cid}" style="position:relative;padding-top:56.25%;margin-top:12px;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--surface);"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:var(--muted);"><div style="width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;"></div><span style="font-size:11px;">Loading…</span></div></div>`;
 }
 
 function renderContent(text) {
