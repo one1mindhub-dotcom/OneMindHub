@@ -719,6 +719,7 @@ function dbRowToPost(r) {
     id: r.id, author: r.author, authorName: r.author_name,
     content: r.content || '', image: r.image_url,
     streamUid: r.stream_uid || null,
+    pinnedPostId: r.pinned_post_id || null,
     tags: r.tags || [], likes: r.likes || [], reposts: r.reposts || [],
     replies: [], views: r.views || 0,
     city: r.city, state: r.state, country: r.country,
@@ -1536,6 +1537,17 @@ function switchTab(tab) {
 
 // Menu closing handled by floating menu system
 
+async function pinPost(postId) {
+  if (!OMH.currentUser) return;
+  const post = OMH.posts.find(p => p.id === postId);
+  if (!post) return;
+  const alreadyPinned = OMH.currentUser.pinnedPostId === postId;
+  OMH.currentUser.pinnedPostId = alreadyPinned ? null : postId;
+  await sb.from('users').update({ pinned_post_id: OMH.currentUser.pinnedPostId }).eq('username', OMH.currentUser.username);
+  toast(alreadyPinned ? 'Post unpinned.' : 'Post pinned to your profile! 📌', 'success');
+  if (OMH.currentPage === 'profile') renderProfilePage();
+}
+
 function togglePostMenu(postId, e) {
   e.stopPropagation();
 
@@ -1556,8 +1568,11 @@ function togglePostMenu(postId, e) {
   // Build menu HTML dynamically
   let items = '';
   if (isOwner || isAdmin) {
+    const isPinned = u && u.pinnedPostId === postId;
     items += `<div class="post-menu-item" onclick="openEdit('${postId}');closeAllMenus()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit post</div>`;
+    items += `<div class="post-menu-item" onclick="pinPost('${postId}');closeAllMenus()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>${isPinned ? 'Unpin from profile' : 'Pin to profile'}</div>`;
     items += `<div class="post-menu-item danger" onclick="deletePost('${postId}');closeAllMenus()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>Delete post</div>`;
   } else {
@@ -3036,9 +3051,20 @@ function renderProfileContent() {
 
   if (profileTab === 'posts') {
     const textPosts = userPosts.filter(p => !p.vote);
-    el.innerHTML = textPosts.length
-      ? textPosts.map(renderPost).join('')
-      : `<div style="text-align:center;color:var(--muted);padding:48px 20px;font-size:14px;">No posts yet.</div>`;
+    const pinnedId = u.pinnedPostId || u.pinned_post_id;
+    const pinnedPost = pinnedId ? OMH.posts.find(p => p.id === pinnedId && !p.removed) : null;
+    const unpinnedPosts = pinnedPost ? textPosts.filter(p => p.id !== pinnedId) : textPosts;
+    const pinnedHtml = pinnedPost ? `
+      <div style="border-bottom:1px solid var(--border);background:rgba(79,110,247,0.04);">
+        <div style="padding:8px 20px 0;display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px;font-weight:600;">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>
+          PINNED POST
+        </div>
+        ${renderPost(pinnedPost)}
+      </div>` : '';
+    el.innerHTML = (pinnedHtml + (unpinnedPosts.length
+      ? unpinnedPosts.map(renderPost).join('')
+      : `<div style="text-align:center;color:var(--muted);padding:48px 20px;font-size:14px;">No posts yet.</div>`)) || `<div style="text-align:center;color:var(--muted);padding:48px 20px;font-size:14px;">No posts yet.</div>`;
 
   } else if (profileTab === 'votes') {
     const votePosts = userPosts.filter(p => p.vote);
@@ -3046,38 +3072,7 @@ function renderProfileContent() {
       el.innerHTML = `<div style="text-align:center;color:var(--muted);padding:48px 20px;font-size:14px;">No GeoVotes created yet.</div>`;
       return;
     }
-    el.innerHTML = votePosts.map(p => {
-      const v = p.vote;
-      const total = v.options.reduce((s,o)=>s+o.voters.length,0);
-      const isOpen = new Date(v.closesAt) > new Date();
-      const eligible = OMH.currentUser && OMH.checkGeoEligibility(v.regions);
-      return `
-        <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px;">
-          <div style="font-size:14px;font-weight:700;margin-bottom:4px;">${v.title}</div>
-          ${v.description?`<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">${v.description}</div>`:''}
-          <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
-            <span class="geo-badge">📍 ${v.regionLabel}</span>
-            ${eligible&&isOpen?'<span class="geo-badge" style="background:rgba(79,110,247,.1);border-color:rgba(79,110,247,.3);color:var(--accent);">✓ Eligible</span>':''}
-            <span style="font-size:11px;color:${isOpen?'var(--green)':'var(--amber)'};margin:auto 0;">${isOpen?timeUntil(v.closesAt):'Closed'}</span>
-          </div>
-          ${v.options.map((o,i)=>{
-            const pct = total ? Math.round(o.voters.length/total*100) : 0;
-            const isVoted = OMH.currentUser && o.voters.includes(OMH.currentUser.username);
-            const clickable = eligible && isOpen && !isVoted && OMH.currentUser;
-            return `<div class="vote-option ${isVoted?'voted':''}" style="cursor:${clickable?'pointer':'default'};" onclick="${clickable?`initiateVoteWithGPS('${p.id}',${i})`:''}">
-              <div class="vote-bar" style="width:${pct}%"></div>
-              <div class="vote-option-text" style="display:flex;justify-content:space-between;">
-                <span>${isVoted?'✓ ':''}${o.label}</span>
-                <span style="color:var(--muted);">${total>0?pct+'%':''}</span>
-              </div>
-            </div>`;
-          }).join('')}
-          <div style="font-size:11px;color:var(--muted);margin-top:8px;display:flex;justify-content:space-between;">
-            <span>${total} total vote${total!==1?'s':''}</span>
-            <span>${timeAgo(p.timestamp)}</span>
-          </div>
-        </div>`;
-    }).join('');
+    el.innerHTML = votePosts.map(p => renderPost(p)).join('');
 
   } else if (profileTab === 'media') {
     const mediaPosts = userPosts.filter(p => p.image);
@@ -3987,16 +3982,23 @@ function renderNotificationsPage() {
     el.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--muted);">No notifications yet.</div>';
     return;
   }
-  const icons = { like:'❤️', repost:'🔁', quote:'💬', reply:'↩️', flag:'🚩' };
-  const labels = { like:'liked your post', repost:'reposted your post', quote:'quoted your post', reply:'replied to your post', flag:'flagged your post for Community Court' };
-  el.innerHTML = mine.map(n => `
-    <div style="display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border);${n.read?'':'background:var(--glow);'}" onclick="navigate('feed')" style="cursor:pointer;">
-      <div style="font-size:22px;margin-top:2px;">${icons[n.type]||'🔔'}</div>
-      <div>
-        <div style="font-size:14px;"><span style="font-weight:700;">@${n.from}</span> ${labels[n.type]||n.type}</div>
+  const labels = { like: 'liked your post', repost: 'reposted your post', quote: 'quoted your post', reply: 'replied to your post', flag: 'flagged your post for Community Court' };
+  el.innerHTML = mine.map(n => {
+    const fromUser = OMH.users.find(u => u.username === n.from);
+    const avatarUrl = fromUser?.avatarUrl || fromUser?.avatar;
+    const initials = (n.from || '?')[0].toUpperCase();
+    const bg = avatarColor(n.from);
+    const avatarHtml = avatarUrl
+      ? `<img src="${avatarUrl}" style="width:38px;height:38px;border-radius:50%;object-fit:cover;flex-shrink:0;" />`
+      : `<div style="width:38px;height:38px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff;flex-shrink:0;">${initials}</div>`;
+    return `<div style="display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer;${n.read ? '' : 'background:var(--glow);'}" onclick="navigate('feed')">
+      ${avatarHtml}
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:14px;"><span style="font-weight:700;">@${n.from}</span> ${labels[n.type] || n.type}</div>
         <div style="font-size:12px;color:var(--muted);margin-top:2px;">${timeAgo(n.timestamp)}</div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 function markAllNotifsRead() {
   OMH.notifications.filter(n => n.to === OMH.currentUser?.username).forEach(n => n.read = true);
