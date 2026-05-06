@@ -1886,6 +1886,17 @@ async function uploadImageDirect(file) {
 const VIDEO_TYPES = ['video/mp4','video/quicktime','video/webm','video/mov'];
 const IMAGE_TYPES = ['image/jpeg','image/jpg','image/png','image/gif','image/webp'];
 
+function checkVideoDuration(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const vid = document.createElement('video');
+    vid.preload = 'metadata';
+    vid.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(vid.duration); };
+    vid.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read video metadata')); };
+    vid.src = url;
+  });
+}
+
 async function uploadToBackblaze(file) {
   const isVideo = VIDEO_TYPES.includes(file.type);
   const isImage = IMAGE_TYPES.includes(file.type);
@@ -1984,7 +1995,14 @@ async function previewImage(e) {
   if (!IMAGE_TYPES.includes(file.type) && !VIDEO_TYPES.includes(file.type)) {
     toast('File type not supported.', 'error'); return;
   }
+  if (isVideo && file.size > 200 * 1024 * 1024) { toast('Video must be under 200MB.', 'error'); return; }
   if (!isVideo && file.size > 10 * 1024 * 1024) { toast('Image must be under 10MB.', 'error'); return; }
+  if (isVideo) {
+    try {
+      const dur = await checkVideoDuration(file);
+      if (dur > 600) { toast('Video must be under 10 minutes.', 'error'); return; }
+    } catch(e) {}
+  }
   // Show local preview immediately
   const wrap = document.getElementById('img-preview-wrap');
   const preview = document.getElementById('img-preview');
@@ -3646,8 +3664,14 @@ async function previewComposeModalImage(e) {
   const file = e.target.files[0];
   if (!file) return;
   const isVideo = VIDEO_TYPES.includes(file.type);
-  const maxSize = isVideo ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
-  if (file.size > maxSize) { toast(`${isVideo?'Video':'Image'} must be under ${isVideo?'50MB':'10MB'}.`, 'error'); return; }
+  const maxSize = isVideo ? 200 * 1024 * 1024 : 10 * 1024 * 1024;
+  if (file.size > maxSize) { toast(`${isVideo?'Video':'Image'} must be under ${isVideo?'200MB':'10MB'}.`, 'error'); return; }
+  if (isVideo) {
+    try {
+      const dur = await checkVideoDuration(file);
+      if (dur > 600) { toast('Video must be under 10 minutes.', 'error'); return; }
+    } catch(e) {}
+  }
   const reader = new FileReader();
   reader.onload = function(ev) {
     const img = document.getElementById('compose-modal-img');
