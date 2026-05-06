@@ -2819,7 +2819,9 @@ function renderContent(text) {
     .replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/#(\w+)/g, '<span style="color:var(--accent);cursor:pointer;" onclick="handleSearch(\'#$1\')">#$1</span>')
     .replace(/\$([A-Za-z]{1,6})/g, (m, t) => `<span style="color:#10b981;cursor:pointer;font-weight:600;" onclick="handleSearch('$${t}')">$${t}</span>`)
-    .replace(/@(\w+)/g, '<span style="color:var(--accent);">@$1</span>');
+    .replace(/@(\w+)/g, '<span style="color:var(--accent);">@$1</span>')
+    .replace(/\n\n+/g, '</p><p style="margin-top:10px;">')
+    .replace(/\n/g, '<br>');
 }
 
 // Strip bilingual / secondary names from location strings (take only text before first "/" or "(")
