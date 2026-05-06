@@ -30,7 +30,7 @@ exports.handler = async (event) => {
 
   const safeName = (name || 'video.mp4').replace(/[^\w.\-]/g, '_');
   const encodedName = Buffer.from(safeName).toString('base64');
-  const encodedMaxDuration = Buffer.from('600').toString('base64');
+  const encodedMaxDuration = Buffer.from('60').toString('base64');
 
   return new Promise((resolve) => {
     const options = {
