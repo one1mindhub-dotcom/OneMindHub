@@ -1196,9 +1196,18 @@ document.addEventListener('visibilitychange', async () => {
       <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px;">Unlimited GeoVotes · Multi-region support · Vote analytics · Community Court access · Verified badge</div>
       <button class="btn-primary" style="width:100%;font-size:13px;" onclick="showModal('premium')">Upgrade — $8/mo</button>
     </div>
-    <div style="margin-top:16px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;">
-      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Early Version Notice</div>
-      <div style="font-size:11px;color:var(--muted);line-height:1.6;">Location is self-declared with GPS corroboration at vote time. Cryptographic ZK verification coming in V2. <span class="link" onclick="alert('OneMind V2 will use on-device ZK proofs (zkLocus) to cryptographically verify location without storing any data. Government ID selective disclosure will provide the highest trust tier. Timeline: ~12 months.')">Learn more</span></div>
+    <div style="margin-top:16px;background:var(--card);border:1px solid rgba(245,158,11,.3);border-radius:12px;padding:14px;">
+      <div style="font-size:11px;font-weight:700;color:#f59e0b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">🔥 Community Energy Algorithm</div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.8;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>Card view (3sec+)</span><span style="color:var(--text);font-weight:600;">×1 pt</span></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>Video 25% watched</span><span style="color:var(--text);font-weight:600;">+2 pts</span></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>Video 50% watched</span><span style="color:var(--text);font-weight:600;">+3 pts</span></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>Video 75% watched</span><span style="color:var(--text);font-weight:600;">+4 pts</span></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>Video 100% watched</span><span style="color:var(--text);font-weight:600;">+5 pts</span></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>Votes / Likes</span><span style="color:var(--text);font-weight:600;">×10 pts</span></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span>Comments</span><span style="color:var(--text);font-weight:600;">×5 pts</span></div>
+        <div style="border-top:1px solid var(--border);padding-top:7px;font-size:10px;color:var(--muted);">Divided by time since posted<sup>0.8</sup>. No secret ranking. No promoted content.</div>
+      </div>
     </div>
   </aside>
 </div>
@@ -1469,7 +1478,7 @@ document.addEventListener('visibilitychange', async () => {
       <div><label>State / Province</label><div id="su-state-container"><input class="input-field" id="su-state" type="text" placeholder="State / Province / Region" /></div></div>
       <div><label>City / Town</label><input class="input-field" id="su-city" type="text" placeholder="Austin" /></div>
       <div style="grid-column:1/-1;" class="early-notice">
-        📍 <strong style="color:var(--text);">Location lock:</strong> Your location can only be changed once every 6 months. This prevents gaming of geo-restricted votes. Early version uses self-declared location + GPS corroboration.
+        📍 <strong style="color:var(--text);">Location lock:</strong> Your location can only be changed once every 6 months. This prevents gaming of geo-restricted votes. Location is self-declared with GPS corroboration at vote time.
       </div>
       <div style="grid-column:1/-1;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;">
         <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin:0;">
@@ -1643,7 +1652,7 @@ document.addEventListener('visibilitychange', async () => {
     <div style="font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.6;">OneMind checks your GPS location at vote time to corroborate your declared location. Your coordinates are never stored — only checked for regional eligibility.</div>
     <div id="gps-status" style="font-size:13px;color:var(--muted);margin-bottom:16px;">Requesting location…</div>
     <div class="early-notice" style="text-align:left;margin-bottom:16px;">
-      <strong style="color:var(--text);">Early version:</strong> GPS is optional but encouraged. If you deny, your self-declared location is used. Cryptographic ZK location proofs coming in V2.
+      <strong style="color:var(--text);">📍 Location verification:</strong> GPS is optional but encouraged. If you deny, your self-declared location is used. Cryptographic ZK location proofs coming in V2.
     </div>
     <button class="btn-primary" id="gps-confirm-btn" onclick="confirmGpsVote()" style="width:100%;padding:12px;display:none;">Cast My Vote</button>
     <button class="btn-ghost" onclick="skipGpsVote()" style="width:100%;padding:12px;margin-top:8px;">Skip GPS — Use Declared Location</button>
