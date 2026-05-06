@@ -211,9 +211,6 @@ label{font-size:13px;color:var(--muted);font-weight:500;margin-bottom:5px;displa
 /* Early version notice */
 .early-notice{background:rgba(79,110,247,.06);border:1px solid rgba(79,110,247,.2);border-radius:10px;padding:10px 14px;font-size:11px;color:var(--muted);line-height:1.5}
 
-/* Community Energy badge */
-.energy-badge{display:inline-flex;align-items:center;gap:3px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700;color:#f59e0b;white-space:nowrap;}
-
 /* Edit/delete actions */
 .post-menu{position:relative}
 .post-menu-dropdown{position:absolute;top:100%;right:0;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:140px;z-index:20;box-shadow:0 8px 24px rgba(0,0,0,.4);display:none}
@@ -1159,12 +1156,9 @@ document.addEventListener('visibilitychange', async () => {
           </button>
         </div></div>
       <button class="btn-primary" onclick="doLogin()" style="width:100%;padding:12px;">Sign In</button>
-      <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:2px;">
-        <span class="link" onclick="closeModal('login');showModal('forgot-password')" style="color:var(--muted);">Forgot password?</span>
-        <span class="link" onclick="closeModal('login');showModal('forgot-username')" style="color:var(--muted);">Forgot username?</span>
-      </div>
       <button class="btn-ghost" onclick="closeModal('login');showModal('signup')" style="width:100%;padding:12px;">Create Account</button>
     </div>
+    <div style="text-align:center;margin-top:12px;font-size:12px;color:var(--muted);">Demo: <span class="mono">demo</span> / <span class="mono">demo123</span></div>
     <button data-close="login" class="modal-close-btn">✕</button>
   </div>
 </div>
@@ -2816,14 +2810,6 @@ function renderStreamVideo(streamUid) {
   return `<div id="${cid}" style="position:relative;padding-top:56.25%;margin-top:12px;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--surface);">${iframeHtml}</div>`;
 }
 
-// Extract Cloudflare Stream UID from any video URL or UID string
-function extractStreamUid(str) {
-  if (!str) return null;
-  if (/^[a-f0-9]{32}$/i.test(str.trim())) return str.trim();
-  const m = str.match(/(?:videodelivery\.net|cloudflarestream\.com)\/([a-f0-9]{32})/i);
-  return m ? m[1] : null;
-}
-
 function renderContent(text) {
   return text
     .replace(/</g,'&lt;').replace(/>/g,'&gt;')
@@ -3082,39 +3068,16 @@ function renderPost(post) {
             <button onclick="OMH.bookmarkPost('${post.id}')" style="background:none;border:none;cursor:pointer;color:${bookmarked?'var(--accent)':'var(--muted)'};display:flex;align-items:center;padding:6px 8px;border-radius:8px;transition:all .15s;" onmouseover="this.style.color='var(--accent)';this.style.background='var(--glow)'" onmouseout="this.style.color='${bookmarked?'var(--accent)':'var(--muted)'}';this.style.background='none'" title="Bookmark">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="${bookmarked?'currentColor':'none'}" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
             </button>
-            ${energyBadge(post)}
+            <div style="display:flex;align-items:center;gap:3px;color:var(--muted);font-size:12px;padding:0 4px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              ${post.views||0}
+            </div>
           </div>
         </div>
       </div>
       ${dotMenu}
     </div>`;
 }
-
-// ── Community Energy Score ────────────────────────────────────────────────────
-// Card view (3sec+) = +1pt
-// Video 25% = +2, 50% = +3, 75% = +4, 100% = +5 (cumulative max 15pts for video)
-// Votes/likes = ×10, Comments = ×5
-// Time decay: divide by hoursAge^0.8
-function energyScore(post) {
-  const views    = post.views || 0;
-  const votes    = (post.likes || []).length;
-  const comments = (post.replies || []).length;
-  const raw      = views + votes * 10 + comments * 5;
-  const ageMs    = Date.now() - new Date(post.timestamp);
-  const ageHrs   = Math.max(ageMs / 3600000, 0.1);
-  return raw / Math.pow(ageHrs, 0.8);
-}
-function fmtEnergy(s) {
-  if (s >= 1000000) return (s/1000000).toFixed(1)+'M';
-  if (s >= 1000)    return (s/1000).toFixed(1)+'K';
-  return Math.round(s)+'';
-}
-function energyBadge(post) {
-  const s = energyScore(post);
-  if (s < 1) return '';
-  return `<span class="energy-badge" title="Community Energy score">🔥 ${fmtEnergy(s)}</span>`;
-}
-// ─────────────────────────────────────────────────────────────────────────────
 
 // Feed
 function renderFeed() {
@@ -4125,8 +4088,7 @@ async function confirmDeleteAccount() {
   if (typed !== 'DELETE') { toast('Account deletion cancelled.', 'info'); return; }
   const u = OMH.currentUser;
   await sb.from('posts').delete().eq('author', u.username);
-  await sb.from('notifications').delete().eq('to_user', u.username);
-  await sb.from('notifications').delete().eq('from_user', u.username);
+  await sb.from('notifications').delete().eq('recipient', u.username);
   await sb.from('users').delete().eq('username', u.username);
   OMH.logout();
   toast('Your account has been deleted. Sorry to see you go.', 'info', 5000);
@@ -4634,89 +4596,6 @@ document.addEventListener('click', function(e) {
   }
 });
 document.addEventListener('scroll', function() { closeAllMenus(); closeRepostMenu(); }, true);
-</script>
-
-<!-- FORGOT PASSWORD -->
-<div id="modal-forgot-password" class="overlay" style="display:none;" onclick="closeModalOnOverlay(event,'forgot-password')" data-overlay-close="forgot-password">
-  <div class="modal" style="position:relative;max-width:400px;">
-    <button data-close="forgot-password" class="modal-close-btn">✕</button>
-    <div style="text-align:center;margin-bottom:20px;">
-      <div style="font-size:32px;margin-bottom:8px;">🔑</div>
-      <div style="font-size:20px;font-weight:700;">Reset Password</div>
-      <div style="font-size:13px;color:var(--muted);margin-top:6px;">Enter your email and we'll send a reset link</div>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:14px;">
-      <div><label>Email Address</label><input class="input-field" id="forgot-pw-email" type="email" placeholder="you@example.com" onkeydown="if(event.key==='Enter')doForgotPassword()" /></div>
-      <button class="btn-primary" onclick="doForgotPassword()" style="width:100%;padding:12px;">Send Reset Link</button>
-      <div style="text-align:center;font-size:12px;color:var(--muted);">
-        Remember your password? <span class="link" onclick="closeModal('forgot-password');showModal('login')">Sign in</span>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- FORGOT USERNAME -->
-<div id="modal-forgot-username" class="overlay" style="display:none;" onclick="closeModalOnOverlay(event,'forgot-username')" data-overlay-close="forgot-username">
-  <div class="modal" style="position:relative;max-width:400px;">
-    <button data-close="forgot-username" class="modal-close-btn">✕</button>
-    <div style="text-align:center;margin-bottom:20px;">
-      <div style="font-size:32px;margin-bottom:8px;">👤</div>
-      <div style="font-size:20px;font-weight:700;">Find Your Username</div>
-      <div style="font-size:13px;color:var(--muted);margin-top:6px;">Enter your email and we'll send your username to your inbox</div>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:14px;">
-      <div><label>Email Address</label><input class="input-field" id="forgot-user-email" type="email" placeholder="you@example.com" onkeydown="if(event.key==='Enter')doForgotUsername()" /></div>
-      <button class="btn-primary" onclick="doForgotUsername()" style="width:100%;padding:12px;">Send Username</button>
-      <div style="text-align:center;font-size:12px;color:var(--muted);">
-        Remember your username? <span class="link" onclick="closeModal('forgot-username');showModal('login')">Sign in</span>
-      </div>
-    </div>
-  </div>
-</div>
-
-<script>
-async function doForgotPassword() {
-  const email = document.getElementById('forgot-pw-email').value.trim().toLowerCase();
-  if (!email) { toast('Please enter your email address.', 'error'); return; }
-
-  // Check if email exists in our users table
-  const { data } = await sb.from('users').select('username, email').eq('email', email).single().catch(() => ({ data: null }));
-
-  if (data) {
-    // Use Supabase Auth reset — works if user also has a Supabase Auth account
-    // For plain-table users, this sends to the email regardless
-    try {
-      await sb.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin + '/?reset=1'
-      });
-    } catch(e) {}
-  }
-
-  // Always same message — prevent email enumeration
-  toast('If that email is registered, a reset link has been sent. Check your inbox.', 'success', 6000);
-  closeModal('forgot-password');
-}
-
-async function doForgotUsername() {
-  const email = document.getElementById('forgot-user-email').value.trim().toLowerCase();
-  if (!email) { toast('Please enter your email address.', 'error'); return; }
-
-  // Look up username — but never display it in the UI
-  const { data } = await sb.from('users').select('username').eq('email', email).single().catch(() => ({ data: null }));
-
-  if (data && data.username) {
-    // Attempt to send via Supabase Auth email (works if auth is configured)
-    try {
-      await sb.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin + '/?username=' + encodeURIComponent(data.username)
-      });
-    } catch(e) {}
-  }
-
-  // Always identical response
-  toast("If that email is registered, we've sent your username to your inbox.", 'success', 6000);
-  closeModal('forgot-username');
-}
 </script>
 </body>
 </html>
