@@ -927,7 +927,7 @@ document.addEventListener('visibilitychange', async () => {
           <div style="display:flex;gap:12px;align-items:flex-start;">
             <div class="avatar" id="compose-avatar" style="font-size:13px;">?</div>
             <div style="flex:1;">
-              <textarea class="input-field" id="compose-text" placeholder="What does your community think?" rows="2" style="border:none;background:transparent;padding:4px 0;font-size:16px;resize:none;" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px';document.getElementById('char-count').textContent=this.value.length+' / 25000'"></textarea>
+              <textarea class="input-field" id="compose-text" placeholder="What does your community think?" rows="2" style="border:none;background:transparent;padding:4px 0;font-size:16px;resize:none;" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px';document.getElementById('char-count').textContent=this.value.length+' / 500'"></textarea>
               <div id="img-preview-wrap" style="display:none;">
                 <img id="img-preview" src="" alt="preview" />
                 <button id="remove-img" onclick="removeImage()">✕</button>
@@ -943,7 +943,7 @@ document.addEventListener('visibilitychange', async () => {
                   </button>
                 </div>
                 <div style="display:flex;gap:8px;align-items:center;">
-                  <span id="char-count" style="font-size:12px;color:var(--muted);">0 / 25000</span>
+                  <span id="char-count" style="font-size:12px;color:var(--muted);">0 / 500</span>
                   <button class="btn-vote" id="make-vote-btn" onclick="showVoteModal()">🗳️ GeoVote</button>
                   <button class="btn-primary" onclick="submitPost()" style="padding:8px 18px;font-size:13px;">Post</button>
                 </div>
@@ -1592,7 +1592,7 @@ document.addEventListener('visibilitychange', async () => {
     <div style="display:flex;gap:12px;align-items:flex-start;">
       <div class="avatar" id="compose-modal-avatar" style="width:40px;height:40px;font-size:13px;flex-shrink:0;">?</div>
       <div style="flex:1;">
-        <textarea class="input-field" id="compose-modal-text" placeholder="What does your community think?" rows="4" style="font-size:15px;resize:none;border-color:transparent;background:transparent;padding:4px 0;" oninput="document.getElementById('compose-modal-count').textContent=this.value.length+' / 25000'"></textarea>
+        <textarea class="input-field" id="compose-modal-text" placeholder="What does your community think?" rows="4" style="font-size:15px;resize:none;border-color:transparent;background:transparent;padding:4px 0;" oninput="document.getElementById('compose-modal-count').textContent=this.value.length+' / 500'"></textarea>
         <div id="compose-modal-img-wrap" style="display:none;margin-top:8px;">
           <img id="compose-modal-img" style="max-height:150px;border-radius:10px;border:1px solid var(--border);" />
           <button onclick="removeComposeModalImage()" style="background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:50%;width:22px;height:22px;cursor:pointer;margin-left:8px;font-size:12px;">✕</button>
@@ -1619,7 +1619,7 @@ document.addEventListener('visibilitychange', async () => {
         <button onclick="openVoteFromCompose()" title="Add GeoVote" style="background:none;border:1px solid var(--border);color:var(--text);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Sora',sans-serif;transition:all .2s;display:flex;align-items:center;gap:5px;margin-left:4px;" onmouseover="this.style.borderColor='var(--green)';this.style.color='var(--green)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)'">
           🗳️ GeoVote
         </button>
-        <span id="compose-modal-count" style="font-size:11px;color:var(--muted);margin-left:6px;">0 / 25000</span>
+        <span id="compose-modal-count" style="font-size:11px;color:var(--muted);margin-left:6px;">0 / 500</span>
       </div>
       <button onclick="submitComposeModal()" class="btn-primary" style="padding:9px 22px;font-size:14px;">Post</button>
     </div>
@@ -2538,7 +2538,7 @@ async function submitPost() {
   if (!OMH.currentUser) { showModal('login'); return; }
   const content = document.getElementById('compose-text').value.trim();
   if (!content && !pendingImage && !pendingVote) { toast('Write something or attach a GeoVote first.', 'error'); return; }
-  if (content.length > 25000) { toast('Max 25000 characters.', 'error'); return; }
+  if (content.length > 500) { toast('Max 500 characters.', 'error'); return; }
 
   const tags = (content.match(/#\w+/g) || []).map(t => t.slice(1));
   const post = {
@@ -2570,7 +2570,7 @@ async function submitPost() {
   const ta = document.getElementById('compose-text');
   if (ta) { ta.value = ''; ta.style.height = 'auto'; }
   const cc = document.getElementById('char-count');
-  if (cc) cc.textContent = '0 / 25000';
+  if (cc) cc.textContent = '0 / 500';
   removeImage();
   pendingVote = null;
   const voteBtn = document.getElementById('make-vote-btn');
@@ -2599,7 +2599,7 @@ function submitEdit() {
   const postId = document.getElementById('edit-post-id').value;
   const newContent = document.getElementById('edit-text').value.trim();
   if (!newContent) { toast('Post cannot be empty.', 'error'); return; }
-  if (newContent.length > 25000) { toast('Max 25000 characters.', 'error'); return; }
+  if (newContent.length > 500) { toast('Max 500 characters.', 'error'); return; }
   if (OMH.editPost(postId, newContent)) {
     closeModal('edit');
     renderFeed();
@@ -2819,9 +2819,7 @@ function renderContent(text) {
     .replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/#(\w+)/g, '<span style="color:var(--accent);cursor:pointer;" onclick="handleSearch(\'#$1\')">#$1</span>')
     .replace(/\$([A-Za-z]{1,6})/g, (m, t) => `<span style="color:#10b981;cursor:pointer;font-weight:600;" onclick="handleSearch('$${t}')">$${t}</span>`)
-    .replace(/@(\w+)/g, '<span style="color:var(--accent);">@$1</span>')
-    .replace(/\n\n+/g, '</p><p style="margin-top:10px;">')
-    .replace(/\n/g, '<br>');
+    .replace(/@(\w+)/g, '<span style="color:var(--accent);">@$1</span>');
 }
 
 // Strip bilingual / secondary names from location strings (take only text before first "/" or "(")
@@ -4173,7 +4171,7 @@ function openComposeModal() {
   const preview = document.getElementById('compose-modal-vote-preview');
   if (preview) preview.style.display = 'none';
   const count = document.getElementById('compose-modal-count');
-  if (count) count.textContent = '0 / 25000';
+  if (count) count.textContent = '0 / 500';
   const av = document.getElementById('compose-modal-avatar');
   if (av && OMH.currentUser) {
     const u = OMH.currentUser;
@@ -4286,7 +4284,7 @@ async function submitComposeModal() {
   const ta = document.getElementById('compose-modal-text');
   const text = ta ? ta.value.trim() : '';
   if (!text && !composeModalImage && !pendingVote) { toast('Write something or attach a GeoVote first.', 'error'); return; }
-  if (text.length > 25000) { toast('Max 25000 characters.', 'error'); return; }
+  if (text.length > 500) { toast('Max 500 characters.', 'error'); return; }
   const tags = (text.match(/#\w+/g) || []).map(function(t){ return t.slice(1); });
   const post = {
     id: 'p-' + Date.now(),
@@ -4500,7 +4498,7 @@ function toggleEmojiPicker() {
         btn.onmouseout = () => btn.style.background = 'none';
         btn.onclick = () => {
           const ta = document.getElementById('compose-modal-text');
-          if (ta) { ta.value += e; ta.focus(); document.getElementById('compose-modal-count').textContent = ta.value.length + ' / 25000'; }
+          if (ta) { ta.value += e; ta.focus(); document.getElementById('compose-modal-count').textContent = ta.value.length + ' / 500'; }
           panel.style.display = 'none';
         };
         panel.appendChild(btn);
