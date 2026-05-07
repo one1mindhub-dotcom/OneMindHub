@@ -322,19 +322,38 @@ const OMH = {
       // Fetch reply counts non-blocking — doesn't delay initial render
       const postIds = this.posts.map(p => p.id);
       if (postIds.length) {
-        sb.from('replies').select('post_id, author').in('post_id', postIds)
+        sb.from('replies').select('post_id, author, content, created_at, media_url').in('post_id', postIds)
           .then(({ data: replyCounts }) => {
             if (!replyCounts) return;
-            const countMap = {};
+            const countMap   = {};
+            const contentMap = {};
             replyCounts.forEach(r => {
-              if (!countMap[r.post_id]) countMap[r.post_id] = [];
+              if (!countMap[r.post_id])   countMap[r.post_id]   = [];
+              if (!contentMap[r.post_id]) contentMap[r.post_id] = [];
               countMap[r.post_id].push(r.author);
+              contentMap[r.post_id].push(r);
             });
             this.posts.forEach(p => {
               p._replyAuthors = countMap[p.id] || [];
               p.replyCount    = p._replyAuthors.length;
+              // Populate replies array with DB content so they display immediately
+              const dbReplies = contentMap[p.id] || [];
+              dbReplies.forEach(r => {
+                const exists = p.replies.some(existing =>
+                  existing.author === r.author &&
+                  Math.abs(new Date(existing.timestamp) - new Date(r.created_at)) < 10000
+                );
+                if (!exists) {
+                  p.replies.push({
+                    author:     r.author,
+                    authorName: r.author,
+                    content:    r.content,
+                    media:      r.media_url || null,
+                    timestamp:  r.created_at
+                  });
+                }
+              });
             });
-            // Re-render once reply counts are in
             renderFeed();
             if (this.currentPage === 'profile') renderProfileContent();
           });
@@ -3496,7 +3515,10 @@ function renderProfileContent() {
           ${isVideo ? '<div style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,.6);border-radius:4px;font-size:10px;padding:2px 5px;color:#fff;">▶</div>' : ''}
           ${p.vote ? '<div style="position:absolute;top:6px;left:6px;background:rgba(0,0,0,.6);border-radius:4px;font-size:10px;padding:2px 5px;">🗳️</div>' : ''}
           <div style="position:absolute;bottom:0;left:0;right:0;padding:20px 6px 5px;background:linear-gradient(to top,rgba(0,0,0,.8) 0%,transparent 100%);display:flex;justify-content:space-between;align-items:flex-end;">
-            <span style="font-size:10px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9);">💬 ${p.replies.length || p.replyCount || 0}</span>
+            <div style="display:flex;gap:8px;">
+              <span style="font-size:10px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9);">❤️ ${p.likes.length}</span>
+              <span style="font-size:10px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9);">💬 ${p.replies.length || p.replyCount || 0}</span>
+            </div>
             <span style="font-size:10px;font-weight:700;color:#f59e0b;text-shadow:0 1px 3px rgba(0,0,0,.9);">🔥 ${fmtEnergy(energyScore(p, OMH.currentUser?.username))}</span>
           </div>
         </div>`;
@@ -4764,7 +4786,7 @@ renderNotifBadge();
       const postIds = OMH.posts.map(p => p.id);
       if (postIds.length) {
         const { data: replyRows } = await sb.from('replies')
-          .select('post_id, author, created_at, content, author_name, media_url')
+          .select('post_id, author, content, created_at, media_url')
           .in('post_id', postIds);
 
         if (replyRows) {
