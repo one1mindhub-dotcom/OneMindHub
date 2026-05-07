@@ -319,25 +319,25 @@ const OMH = {
       .limit(200);
     if (!error && data) {
       this.posts = data.map(dbRowToPost);
-      // Fetch reply counts for all posts in one query
+      // Fetch reply counts non-blocking — doesn't delay initial render
       const postIds = this.posts.map(p => p.id);
       if (postIds.length) {
-        const { data: replyCounts } = await sb
-          .from('replies')
-          .select('post_id, author')
-          .in('post_id', postIds);
-        if (replyCounts) {
-          // Group by post_id
-          const countMap = {};
-          replyCounts.forEach(r => {
-            if (!countMap[r.post_id]) countMap[r.post_id] = [];
-            countMap[r.post_id].push(r.author);
+        sb.from('replies').select('post_id, author').in('post_id', postIds)
+          .then(({ data: replyCounts }) => {
+            if (!replyCounts) return;
+            const countMap = {};
+            replyCounts.forEach(r => {
+              if (!countMap[r.post_id]) countMap[r.post_id] = [];
+              countMap[r.post_id].push(r.author);
+            });
+            this.posts.forEach(p => {
+              p._replyAuthors = countMap[p.id] || [];
+              p.replyCount    = p._replyAuthors.length;
+            });
+            // Re-render once reply counts are in
+            renderFeed();
+            if (this.currentPage === 'profile') renderProfileContent();
           });
-          this.posts.forEach(p => {
-            p._replyAuthors = countMap[p.id] || [];
-            p.replyCount = p._replyAuthors.length;
-          });
-        }
       }
     } else if (error) {
       console.error('fetchPosts error:', error);
@@ -2748,17 +2748,28 @@ function submitReply() {
   const post = OMH.posts.find(p => p.id===replyTargetId);
   if (!post) return;
   const replyAuthor = OMH.currentUser.username;
-  post.replies.push({
+  const ts = new Date().toISOString();
+  const replyObj = {
     author: replyAuthor,
     authorName: OMH.currentUser.fullName,
     content: text,
     media: replyMediaUrl || null,
-    timestamp: new Date().toISOString()
-  });
+    timestamp: ts
+  };
+  post.replies.push(replyObj);
   // Keep replyCount and _replyAuthors in sync for energy score
   if (!post._replyAuthors) post._replyAuthors = [];
   post._replyAuthors.push(replyAuthor);
   post.replyCount = post._replyAuthors.length;
+  // Persist reply to Supabase replies table so other clients see it via realtime
+  sb.from('replies').insert({
+    post_id: post.id,
+    author: replyAuthor,
+    author_name: OMH.currentUser.fullName,
+    content: text,
+    media_url: replyMediaUrl || null,
+    created_at: ts
+  }).then(({ error }) => { if (error) console.error('Reply save error:', error); });
   OMH.pushNotification(post.author, 'reply', replyAuthor, post.id);
   OMH.save();
   replyMediaUrl = null;
@@ -3145,18 +3156,23 @@ function renderPost(post) {
 // Votes/likes = ×10 — author's own like excluded
 // Comments = ×5 — author's own comments excluded
 // Time decay: divide by hoursAge^0.8
-function energyScore(post) {
-  const author   = post.author;
-  const views    = post.views || 0; // already filtered at trackView time
-  // Exclude author's own like
-  const votes    = (post.likes || []).filter(u => u !== author).length;
-  // Use _replyAuthors (fetched from DB) or in-session replies, excluding author's own
+function energyScore(post, viewerUsername) {
+  const author  = post.author;
+  // If viewer IS the author, show what others have contributed (exclude self)
+  // If viewer is someone else (or not logged in), show full score
+  const isSelfView = viewerUsername && viewerUsername === author;
+  const likes   = post.likes || [];
+  const votes   = isSelfView ? likes.filter(u => u !== author).length : likes.length;
+  // Reply authors: use _replyAuthors (from DB) or in-session replies
   const replyAuthors = post._replyAuthors ||
     (post.replies || []).map(r => r.author).filter(Boolean);
-  const comments = replyAuthors.filter(a => a !== author).length;
-  const raw      = views + votes * 10 + comments * 5;
-  const ageMs    = Date.now() - new Date(post.timestamp);
-  const ageHrs   = Math.max(ageMs / 3600000, 0.1);
+  const comments = isSelfView
+    ? replyAuthors.filter(a => a !== author).length
+    : replyAuthors.length;
+  const views   = post.views || 0; // trackView already excludes author at write time
+  const raw     = views + votes * 10 + comments * 5;
+  const ageMs   = Date.now() - new Date(post.timestamp);
+  const ageHrs  = Math.max(ageMs / 3600000, 0.1);
   return raw / Math.pow(ageHrs, 0.8);
 }
 function fmtEnergy(s) {
@@ -3165,8 +3181,8 @@ function fmtEnergy(s) {
   return Math.round(s)+'';
 }
 function energyBadge(post) {
-  const s = energyScore(post);
-  if (s < 0.1) return ''; // only hide if truly zero
+  const s = energyScore(post, OMH.currentUser?.username);
+  if (s < 0.1) return '';
   return `<span class="energy-badge" title="Community Energy score">🔥 ${fmtEnergy(s)}</span>`;
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3481,7 +3497,7 @@ function renderProfileContent() {
               <span style="font-size:10px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9);">❤️ ${p.likes.length}</span>
               <span style="font-size:10px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9);">💬 ${p.replies.length || p.replyCount || 0}</span>
             </div>
-            <span style="font-size:10px;font-weight:700;color:#f59e0b;text-shadow:0 1px 3px rgba(0,0,0,.9);">🔥 ${fmtEnergy(energyScore(p))}</span>
+            <span style="font-size:10px;font-weight:700;color:#f59e0b;text-shadow:0 1px 3px rgba(0,0,0,.9);">🔥 ${fmtEnergy(energyScore(p, OMH.currentUser?.username))}</span>
           </div>
         </div>`;
       }).join('')
