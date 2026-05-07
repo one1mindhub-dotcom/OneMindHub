@@ -302,10 +302,11 @@ const OMH = {
   },
 
   async fetchUsers() {
-    const { data } = await sb.from('users').select('username,full_name,avatar_url,is_premium,is_founder,is_admin').limit(500);
+    const { data } = await sb.from('users').select('username,full_name,avatar_url,banner_url,is_premium,is_founder,is_admin').limit(500);
     if (data) this.users = data.map(r => ({
       username: r.username, fullName: r.full_name,
-      avatarUrl: r.avatar_url, isPremium: r.is_premium,
+      avatarUrl: r.avatar_url, bannerUrl: r.banner_url,
+      isPremium: r.is_premium,
       isFounder: r.is_founder, isAdmin: r.is_admin
     }));
   },
@@ -999,6 +1000,12 @@ document.addEventListener('visibilitychange', async () => {
           </div>
         </div>
       </div>
+      <!-- New posts pill -->
+      <div id="new-posts-pill" style="display:none;position:sticky;top:8px;z-index:100;justify-content:center;pointer-events:none;">
+        <button onclick="loadNewPosts()" style="pointer-events:all;background:var(--accent);color:#fff;border:none;border-radius:999px;padding:7px 18px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 4px 20px rgba(79,110,247,.5);display:flex;align-items:center;gap:6px;font-family:'Sora',sans-serif;transition:transform .15s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+          <span id="new-posts-pill-text">↑ New posts</span>
+        </button>
+      </div>
       <div id="feed-list"></div>
     </div>
 
@@ -1178,7 +1185,8 @@ document.addEventListener('visibilitychange', async () => {
         <div style="display:flex;justify-content:space-between;"><span>Video 50% watched</span><span style="color:var(--text);font-weight:600;">+3 pts</span></div>
         <div style="display:flex;justify-content:space-between;"><span>Video 75% watched</span><span style="color:var(--text);font-weight:600;">+4 pts</span></div>
         <div style="display:flex;justify-content:space-between;"><span>Video 100% watched</span><span style="color:var(--text);font-weight:600;">+5 pts</span></div>
-        <div style="display:flex;justify-content:space-between;"><span>Votes / Likes</span><span style="color:var(--text);font-weight:600;">×10 pts</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>GeoVote cast</span><span style="color:var(--text);font-weight:600;">×10 pts</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>Like / Heart</span><span style="color:var(--text);font-weight:600;">×3 pts</span></div>
         <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span>Comments</span><span style="color:var(--text);font-weight:600;">×5 pts</span></div>
         <div style="border-top:1px solid var(--border);padding-top:7px;font-size:10px;">Score ÷ time<sup>0.8</sup> — No secret ranking. No promoted content.</div>
       </div>
@@ -2134,10 +2142,13 @@ async function redeemActivationCode() {
   activatePremium(data.plan);
 }
 
-// Image
 // Video init via Netlify serverless function (keeps secrets server-side)
+// Always use prod function endpoint — dev site shares the same Cloudflare account
 async function initVideoUpload(size, name) {
-  const res = await fetch('/.netlify/functions/init-video', {
+  const endpoint = window.location.hostname.includes('netlify.app') && !window.location.hostname.includes('onemindhub')
+    ? 'https://onemindhub.com/.netlify/functions/init-video'  // dev site → use prod function
+    : '/.netlify/functions/init-video';                        // prod site → use local function
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ size, name: name || 'video.mp4' })
@@ -3178,28 +3189,48 @@ function renderPost(post) {
 }
 
 // ── Community Energy Score ────────────────────────────────────────────────────
-// Card view (3sec+) = +1pt — unique users only, once per 24hrs, never author
-// Video 25%=+2, 50%=+3, 75%=+4, 100%=+5 (cumulative max 15pts)
-// Votes/likes = ×10 — author's own like excluded
-// Comments = ×5 — author's own comments excluded
+// Card view (3sec+)   = +1pt  — unique users, once per 24hrs, never author
+// Video 25%           = +2pt  (cumulative with card view)
+// Video 50%           = +3pt
+// Video 75%           = +4pt
+// Video 100%          = +5pt  (max 15pt total for fully watched video)
+// GeoVote cast        = +10pt — independent signal, separate from likes
+// Like/heart          = +3pt  — independent signal, separate from votes
+// Comment             = +5pt
 // Time decay: divide by hoursAge^0.8
+// Author's own engagement never counts. Self-view shows others' contributions only.
 function energyScore(post, viewerUsername) {
-  const author  = post.author;
-  // If viewer IS the author, show what others have contributed (exclude self)
-  // If viewer is someone else (or not logged in), show full score
+  const author     = post.author;
   const isSelfView = viewerUsername && viewerUsername === author;
-  const likes   = post.likes || [];
-  const votes   = isSelfView ? likes.filter(u => u !== author).length : likes.length;
-  // Reply authors: use _replyAuthors (from DB) or in-session replies
+  const likes      = post.likes || [];
+
+  // Likes = 3pts each (exclude author's own)
+  const likeCount = isSelfView
+    ? likes.filter(u => u !== author).length
+    : likes.length;
+
+  // GeoVote participants = 10pts each (unique voters across all options, exclude author)
+  let geoVoteCount = 0;
+  if (post.vote && post.vote.options) {
+    const allVoters = new Set();
+    post.vote.options.forEach(o => (o.voters || []).forEach(v => allVoters.add(v)));
+    if (isSelfView) allVoters.delete(author);
+    geoVoteCount = allVoters.size;
+  }
+
+  // Comments = 5pts each (exclude author's own)
   const replyAuthors = post._replyAuthors ||
     (post.replies || []).map(r => r.author).filter(Boolean);
-  const comments = isSelfView
+  const commentCount = isSelfView
     ? replyAuthors.filter(a => a !== author).length
     : replyAuthors.length;
-  const views   = post.views || 0; // trackView already excludes author at write time
-  const raw     = views + votes * 10 + comments * 5;
-  const ageMs   = Date.now() - new Date(post.timestamp);
-  const ageHrs  = Math.max(ageMs / 3600000, 0.1);
+
+  // Views already filtered at trackView time (no author, no dupes within 24hrs)
+  const views = post.views || 0;
+
+  const raw    = views + likeCount * 3 + geoVoteCount * 10 + commentCount * 5;
+  const ageMs  = Date.now() - new Date(post.timestamp);
+  const ageHrs = Math.max(ageMs / 3600000, 0.1);
   return raw / Math.pow(ageHrs, 0.8);
 }
 function fmtEnergy(s) {
@@ -3458,6 +3489,14 @@ function viewUserProfile(username) {
   profileUsername = username;
   profileTab = 'posts';
   navigate('profile');
+  // Fetch fresh data so banner/avatar are always current
+  OMH.fetchUser(username).then(u => {
+    if (!u) return;
+    const idx = OMH.users.findIndex(x => x.username === username);
+    if (idx >= 0) OMH.users[idx] = Object.assign({}, OMH.users[idx], u);
+    else OMH.users.push(u);
+    renderProfilePage();
+  });
 }
 
 function switchProfileTab(tab) {
@@ -4740,6 +4779,73 @@ function flushViews() {
 renderApp();
 renderNotifBadge();
 
+// ── New Posts Pill ────────────────────────────────────────────────────────────
+let _latestKnownTimestamp = null;
+
+function _getNewestTimestamp() {
+  if (!OMH.posts.length) return null;
+  return OMH.posts.reduce((max, p) =>
+    new Date(p.timestamp) > new Date(max) ? p.timestamp : max,
+    OMH.posts[0].timestamp
+  );
+}
+
+async function checkForNewPosts() {
+  if (OMH.currentPage !== 'feed' || OMH.searchQuery) return;
+  const since = _latestKnownTimestamp || _getNewestTimestamp();
+  if (!since) return;
+  try {
+    const { data } = await sb.from('posts')
+      .select('id')
+      .or('removed.is.null,removed.eq.false')
+      .gt('created_at', since);
+    if (!data || !data.length) return;
+    const trulyNew = data.filter(p => !OMH.posts.find(x => x.id === p.id));
+    if (!trulyNew.length) return;
+    // Check scroll position — if already at top just load silently
+    const main = document.querySelector('.main-content, main');
+    const scrollTop = main ? main.scrollTop : window.scrollY;
+    if (scrollTop < 80) {
+      await OMH.fetchPosts(); renderFeed();
+      _latestKnownTimestamp = _getNewestTimestamp();
+      return;
+    }
+    const pill = document.getElementById('new-posts-pill');
+    const txt  = document.getElementById('new-posts-pill-text');
+    if (pill && txt) {
+      txt.textContent = trulyNew.length === 1 ? '↑ 1 new post' : `↑ ${trulyNew.length} new posts`;
+      pill.style.display = 'flex';
+    }
+  } catch(e) {}
+}
+
+async function loadNewPosts() {
+  document.getElementById('new-posts-pill').style.display = 'none';
+  await OMH.fetchPosts();
+  renderFeed();
+  _latestKnownTimestamp = _getNewestTimestamp();
+  const main = document.querySelector('.main-content, main');
+  if (main) main.scrollTo({ top: 0, behavior: 'smooth' });
+  else window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Hide pill when scrolled to top
+setTimeout(() => {
+  const main = document.querySelector('.main-content, main, .page.active') || document.documentElement;
+  main.addEventListener('scroll', () => {
+    if ((main.scrollTop || window.scrollY) < 80) {
+      const pill = document.getElementById('new-posts-pill');
+      if (pill) pill.style.display = 'none';
+    }
+  }, { passive: true });
+}, 2000);
+
+// Start checking after 8s (let page load fully), then every 30s
+setTimeout(() => {
+  _latestKnownTimestamp = _getNewestTimestamp();
+  setInterval(checkForNewPosts, 30000);
+}, 8000);
+
 // ── Supabase Realtime ─────────────────────────────────────────────────────────
 // Listen for engagement changes (likes, views) on posts and new replies.
 // ── Live Engagement Sync ──────────────────────────────────────────────────────
@@ -4911,46 +5017,43 @@ document.addEventListener('scroll', function() { closeAllMenus(); closeRepostMen
 
 <script>
 async function doForgotPassword() {
-  const email = document.getElementById('forgot-pw-email').value.trim().toLowerCase();
+  const emailEl = document.getElementById('forgot-pw-email');
+  const email = emailEl.value.trim().toLowerCase();
   if (!email) { toast('Please enter your email address.', 'error'); return; }
-
-  // Check if email exists in our users table
-  const { data } = await sb.from('users').select('username, email').eq('email', email).single().catch(() => ({ data: null }));
-
-  if (data) {
-    // Use Supabase Auth reset — works if user also has a Supabase Auth account
-    // For plain-table users, this sends to the email regardless
-    try {
+  const btn = document.querySelector('#modal-forgot-password .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  try {
+    const { data } = await sb.from('users').select('username').eq('email', email).single().catch(() => ({ data: null }));
+    if (data) {
       await sb.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin + '/?reset=1'
-      });
-    } catch(e) {}
-  }
-
-  // Always same message — prevent email enumeration
-  toast('If that email is registered, a reset link has been sent. Check your inbox.', 'success', 6000);
+      }).catch(() => {});
+    }
+  } catch(e) {}
   closeModal('forgot-password');
+  emailEl.value = '';
+  if (btn) { btn.disabled = false; btn.textContent = 'Send Reset Link'; }
+  toast('If that email is registered, a reset link has been sent. Check your inbox (and spam folder).', 'success', 7000);
 }
 
 async function doForgotUsername() {
-  const email = document.getElementById('forgot-user-email').value.trim().toLowerCase();
+  const emailEl = document.getElementById('forgot-user-email');
+  const email = emailEl.value.trim().toLowerCase();
   if (!email) { toast('Please enter your email address.', 'error'); return; }
-
-  // Look up username — but never display it in the UI
-  const { data } = await sb.from('users').select('username').eq('email', email).single().catch(() => ({ data: null }));
-
-  if (data && data.username) {
-    // Attempt to send via Supabase Auth email (works if auth is configured)
-    try {
+  const btn = document.querySelector('#modal-forgot-username .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  try {
+    const { data } = await sb.from('users').select('username').eq('email', email).single().catch(() => ({ data: null }));
+    if (data && data.username) {
       await sb.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin + '/?username=' + encodeURIComponent(data.username)
-      });
-    } catch(e) {}
-  }
-
-  // Always identical response
-  toast("If that email is registered, we've sent your username to your inbox.", 'success', 6000);
+      }).catch(() => {});
+    }
+  } catch(e) {}
   closeModal('forgot-username');
+  emailEl.value = '';
+  if (btn) { btn.disabled = false; btn.textContent = 'Send Username'; }
+  toast("If that email is registered, we've sent your username to your inbox.", 'success', 7000);
 }
 </script>
 </body>
