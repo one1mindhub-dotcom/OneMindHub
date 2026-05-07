@@ -418,6 +418,8 @@ const OMH = {
     const post = this.posts.find(p => p.id === postId);
     if (!post || !this.currentUser) return;
     const uid = this.currentUser.username;
+    // Authors cannot like their own posts — self-engagement excluded from energy
+    if (post.author === uid) { toast("You can't like your own post.", 'info', 2500); return; }
     const liked = post.likes.includes(uid);
     if (liked) {
       post.likes = post.likes.filter(u => u !== uid);
@@ -2916,7 +2918,7 @@ function renderSidebar() {
 // Post card
 function renderPost(post) {
   if (post.removed) return '';
-  trackView(post.id);
+  trackView(post.id, post.author);
   const u = OMH.currentUser;
   const liked = u && post.likes.includes(u.username);
   const canFlag = u && (u.isPremium || u.isFounder || u.isAdmin);
@@ -3111,15 +3113,18 @@ function renderPost(post) {
 }
 
 // ── Community Energy Score ────────────────────────────────────────────────────
-// Card view (3sec+) = +1pt
-// Video 25% = +2, 50% = +3, 75% = +4, 100% = +5 (cumulative max 15pts for video)
-// Votes/likes = ×10, Comments = ×5
+// Card view (3sec+) = +1pt — unique users only, once per 24hrs, never author
+// Video 25%=+2, 50%=+3, 75%=+4, 100%=+5 (cumulative max 15pts)
+// Votes/likes = ×10 — author's own like excluded
+// Comments = ×5 — author's own comments excluded
 // Time decay: divide by hoursAge^0.8
 function energyScore(post) {
-  const views    = post.views || 0;
-  const votes    = (post.likes || []).length;
-  // replies array is only populated in-session; fall back to reply_count from DB
-  const comments = (post.replies || []).length || post.replyCount || 0;
+  const author   = post.author;
+  const views    = post.views || 0; // already filtered at trackView time
+  // Exclude author's own like
+  const votes    = (post.likes || []).filter(u => u !== author).length;
+  // Exclude author's own comments (replies have .author field)
+  const comments = (post.replies || []).filter(r => r.author !== author).length || post.replyCount || 0;
   const raw      = views + votes * 10 + comments * 5;
   const ageMs    = Date.now() - new Date(post.timestamp);
   const ageHrs   = Math.max(ageMs / 3600000, 0.1);
@@ -4623,17 +4628,37 @@ function renderBookmarksPage() {
   el.innerHTML = posts.map(renderPost).join('');
 }
 
-// ── View counter (increment on render) ───────────────────────────────────────
-// Called passively; we batch-save only every 5 views to reduce writes
+// ── View counter ─────────────────────────────────────────────────────────────
+// Rules:
+//  1. Post author's own views never count
+//  2. Each unique user can only contribute one qualified view per post per 24hrs
+//  3. Same rules apply to energy score calculation
 let _viewQueue = {};
-function trackView(postId) {
-  _viewQueue[postId] = (_viewQueue[postId]||0) + 1;
+let _viewedPosts = JSON.parse(localStorage.getItem('_viewedPosts') || '{}'); // {postId: timestamp}
+
+function trackView(postId, postAuthor) {
+  const u = OMH.currentUser;
+  // Rule 1: author never contributes to their own post
+  if (u && u.username === postAuthor) return;
+  // Rule 2: deduplicate — same user only counts once per 24hrs per post
+  const viewKey = (u ? u.username : 'anon') + ':' + postId;
+  const lastSeen = _viewedPosts[viewKey] || 0;
+  const now = Date.now();
+  if (now - lastSeen < 24 * 60 * 60 * 1000) return; // seen within 24hrs
+  _viewedPosts[viewKey] = now;
+  // Prune entries older than 48hrs to keep localStorage small
+  const cutoff = now - 48 * 60 * 60 * 1000;
+  Object.keys(_viewedPosts).forEach(k => { if (_viewedPosts[k] < cutoff) delete _viewedPosts[k]; });
+  localStorage.setItem('_viewedPosts', JSON.stringify(_viewedPosts));
+  // Queue the view increment
+  _viewQueue[postId] = (_viewQueue[postId] || 0) + 1;
   if (Object.keys(_viewQueue).length >= 5) flushViews();
 }
+
 function flushViews() {
   Object.entries(_viewQueue).forEach(([id, count]) => {
     const p = OMH.posts.find(p => p.id === id);
-    if (p) p.views = (p.views||0) + count;
+    if (p) p.views = (p.views || 0) + count;
   });
   _viewQueue = {};
   OMH.save();
