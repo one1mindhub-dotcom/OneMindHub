@@ -2762,15 +2762,17 @@ function submitReply() {
   if (!post._replyAuthors) post._replyAuthors = [];
   post._replyAuthors.push(replyAuthor);
   post.replyCount = post._replyAuthors.length;
-  // Persist reply to Supabase replies table so other clients see it via realtime
+  // Save to Supabase — poll immediately after so post author sees it
   sb.from('replies').insert({
     post_id: post.id,
-    author: replyAuthor,
-    author_name: OMH.currentUser.fullName,
+    author:  replyAuthor,
     content: text,
-    media_url: replyMediaUrl || null,
-    created_at: ts
-  }).then(({ error }) => { if (error) console.error('Reply save error:', error); });
+    media_url: replyMediaUrl || null
+  }).then(({ error }) => {
+    if (error) console.error('Reply save error:', error);
+    // Trigger immediate engagement poll so post author's client updates
+    if (window._pollEngagement) window._pollEngagement();
+  });
   OMH.pushNotification(post.author, 'reply', replyAuthor, post.id);
   OMH.save();
   replyMediaUrl = null;
@@ -4775,30 +4777,30 @@ renderNotifBadge();
             contentMap[r.post_id].push(r);
           });
           OMH.posts.forEach(p => {
-            const freshAuthors  = countMap[p.id]   || [];
-            const freshReplies  = contentMap[p.id] || [];
-            const prevCount     = (p._replyAuthors || []).length;
-            if (freshAuthors.length !== prevCount) {
-              p._replyAuthors = freshAuthors;
-              p.replyCount    = freshAuthors.length;
-              // Merge any new replies into the in-session array
-              freshReplies.forEach(r => {
-                const exists = p.replies.some(existing =>
-                  existing.author === r.author &&
-                  Math.abs(new Date(existing.timestamp) - new Date(r.created_at)) < 5000
-                );
-                if (!exists) {
-                  p.replies.push({
-                    author:     r.author,
-                    authorName: r.author_name || r.author,
-                    content:    r.content,
-                    media:      r.media_url || null,
-                    timestamp:  r.created_at
-                  });
-                }
-              });
-              changed = true;
-            }
+            const freshAuthors = countMap[p.id]   || [];
+            const freshReplies = contentMap[p.id] || [];
+            const prevCount    = (p._replyAuthors || []).length;
+            // Always update author list and counts
+            p._replyAuthors = freshAuthors;
+            p.replyCount    = freshAuthors.length;
+            // Merge any replies not yet in the in-session array
+            let replyAdded = false;
+            freshReplies.forEach(r => {
+              const exists = p.replies.some(existing => existing.author === r.author &&
+                Math.abs(new Date(existing.timestamp) - new Date(r.created_at)) < 10000
+              );
+              if (!exists) {
+                p.replies.push({
+                  author:     r.author,
+                  authorName: r.author_name || r.author,
+                  content:    r.content,
+                  media:      r.media_url || null,
+                  timestamp:  r.created_at
+                });
+                replyAdded = true;
+              }
+            });
+            if (freshAuthors.length !== prevCount || replyAdded) changed = true;
           });
         }
       }
