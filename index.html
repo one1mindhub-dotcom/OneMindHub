@@ -249,7 +249,9 @@ label{font-size:13px;color:var(--muted);font-weight:500;margin-bottom:5px;displa
 // ── Supabase client ──────────────────────────────────────────────────────────
 const SUPABASE_URL  = 'https://udufmhupndtuorosogth.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkdWZtaHVwbmR0dW9yb3NvZ3RoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1OTkyNzgsImV4cCI6MjA5MzE3NTI3OH0.ww2-MxOyG9N5hGPG-fo5Boq879U-BDuFjlCFTJurAtw';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+  realtime: { params: { eventsPerSecond: 10 } }
+});
 
 // ── OMH state object ─────────────────────────────────────────────────────────
 const OMH = {
@@ -317,6 +319,26 @@ const OMH = {
       .limit(200);
     if (!error && data) {
       this.posts = data.map(dbRowToPost);
+      // Fetch reply counts for all posts in one query
+      const postIds = this.posts.map(p => p.id);
+      if (postIds.length) {
+        const { data: replyCounts } = await sb
+          .from('replies')
+          .select('post_id, author')
+          .in('post_id', postIds);
+        if (replyCounts) {
+          // Group by post_id
+          const countMap = {};
+          replyCounts.forEach(r => {
+            if (!countMap[r.post_id]) countMap[r.post_id] = [];
+            countMap[r.post_id].push(r.author);
+          });
+          this.posts.forEach(p => {
+            p._replyAuthors = countMap[p.id] || [];
+            p.replyCount = p._replyAuthors.length;
+          });
+        }
+      }
     } else if (error) {
       console.error('fetchPosts error:', error);
     }
@@ -2725,14 +2747,19 @@ function submitReply() {
   if (!text && !replyMediaUrl) return;
   const post = OMH.posts.find(p => p.id===replyTargetId);
   if (!post) return;
+  const replyAuthor = OMH.currentUser.username;
   post.replies.push({
-    author: OMH.currentUser.username,
+    author: replyAuthor,
     authorName: OMH.currentUser.fullName,
     content: text,
     media: replyMediaUrl || null,
     timestamp: new Date().toISOString()
   });
-  OMH.pushNotification(post.author, 'reply', OMH.currentUser.username, post.id);
+  // Keep replyCount and _replyAuthors in sync for energy score
+  if (!post._replyAuthors) post._replyAuthors = [];
+  post._replyAuthors.push(replyAuthor);
+  post.replyCount = post._replyAuthors.length;
+  OMH.pushNotification(post.author, 'reply', replyAuthor, post.id);
   OMH.save();
   replyMediaUrl = null;
   closeModal('reply');
@@ -3079,7 +3106,7 @@ function renderPost(post) {
           <div style="display:flex;gap:0;margin-top:12px;align-items:center;justify-content:space-between;">
             <button onclick="event.stopPropagation();openReply('${post.id}')" style="background:none;border:none;cursor:pointer;color:var(--muted);display:flex;align-items:center;gap:4px;font-size:13px;font-family:'Sora',sans-serif;padding:6px 8px;border-radius:8px;transition:all .15s;" onmouseover="this.style.color='var(--accent)';this.style.background='var(--glow)'" onmouseout="this.style.color='var(--muted)';this.style.background='none'">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-              <span>${post.replies.length||''}</span>
+              <span>${post.replies.length || post.replyCount || ''}</span>
             </button>
             <div style="position:relative;display:inline-flex;">
               <button onclick="toggleRepostMenu('${post.id}',event)" style="background:none;border:none;cursor:pointer;color:${reposted?'var(--green)':'var(--muted)'};display:flex;align-items:center;gap:4px;font-size:13px;font-family:'Sora',sans-serif;padding:6px 8px;border-radius:8px;transition:all .15s;" onmouseover="this.style.color='var(--green)';this.style.background='rgba(16,185,129,.08)'" onmouseout="this.style.color='${reposted?'var(--green)':'var(--muted)'}';this.style.background='none'">
@@ -3123,8 +3150,10 @@ function energyScore(post) {
   const views    = post.views || 0; // already filtered at trackView time
   // Exclude author's own like
   const votes    = (post.likes || []).filter(u => u !== author).length;
-  // Exclude author's own comments (replies have .author field)
-  const comments = (post.replies || []).filter(r => r.author !== author).length || post.replyCount || 0;
+  // Use _replyAuthors (fetched from DB) or in-session replies, excluding author's own
+  const replyAuthors = post._replyAuthors ||
+    (post.replies || []).map(r => r.author).filter(Boolean);
+  const comments = replyAuthors.filter(a => a !== author).length;
   const raw      = views + votes * 10 + comments * 5;
   const ageMs    = Date.now() - new Date(post.timestamp);
   const ageHrs   = Math.max(ageMs / 3600000, 0.1);
@@ -3450,7 +3479,7 @@ function renderProfileContent() {
           <div style="position:absolute;bottom:0;left:0;right:0;padding:20px 6px 5px;background:linear-gradient(to top,rgba(0,0,0,.8) 0%,transparent 100%);display:flex;justify-content:space-between;align-items:flex-end;">
             <div style="display:flex;gap:8px;align-items:center;">
               <span style="font-size:10px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9);">❤️ ${p.likes.length}</span>
-              <span style="font-size:10px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9);">💬 ${p.replies.length || 0}</span>
+              <span style="font-size:10px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9);">💬 ${p.replies.length || p.replyCount || 0}</span>
             </div>
             <span style="font-size:10px;font-weight:700;color:#f59e0b;text-shadow:0 1px 3px rgba(0,0,0,.9);">🔥 ${fmtEnergy(energyScore(p))}</span>
           </div>
@@ -4667,6 +4696,73 @@ function flushViews() {
 // Boot
 renderApp();
 renderNotifBadge();
+
+// ── Supabase Realtime ─────────────────────────────────────────────────────────
+// Listen for engagement changes (likes, views) on posts and new replies.
+// When another user likes/comments, the post author's client updates immediately.
+(function initRealtime() {
+  // Debounce re-renders to avoid thrashing when multiple events fire at once
+  let _renderTimer = null;
+  function scheduleRender() {
+    clearTimeout(_renderTimer);
+    _renderTimer = setTimeout(() => {
+      renderFeed();
+      if (OMH.currentPage === 'profile') renderProfileContent();
+      if (OMH.currentPage === 'nearme')  renderNearMe();
+    }, 120);
+  }
+
+  // Subscribe to post UPDATE events (likes array, views count change)
+  sb.channel('posts-engagement')
+    .on('postgres_changes', {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'posts'
+    }, payload => {
+      const updated = payload.new;
+      const post = OMH.posts.find(p => p.id === updated.id);
+      if (!post) return;
+      // Patch only engagement fields — don't overwrite local state wholesale
+      post.likes    = updated.likes    || post.likes;
+      post.views    = updated.views    != null ? updated.views : post.views;
+      post.removed  = updated.removed  != null ? updated.removed : post.removed;
+      scheduleRender();
+    })
+    .subscribe();
+
+  // Subscribe to reply INSERT events (comment counts)
+  sb.channel('replies-engagement')
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'replies'
+    }, payload => {
+      const reply = payload.new;
+      const post  = OMH.posts.find(p => p.id === reply.post_id);
+      if (!post) return;
+      // Update reply author tracking for energy score
+      if (!post._replyAuthors) post._replyAuthors = [];
+      if (!post._replyAuthors.includes(reply.author)) {
+        post._replyAuthors.push(reply.author);
+      }
+      post.replyCount = post._replyAuthors.length;
+      // Also push into in-session replies array if not already there
+      const alreadyInSession = post.replies.some(r =>
+        r.author === reply.author && r.timestamp === reply.created_at
+      );
+      if (!alreadyInSession && reply.content) {
+        post.replies.push({
+          author: reply.author,
+          authorName: reply.author_name || reply.author,
+          content: reply.content,
+          media: reply.media_url || null,
+          timestamp: reply.created_at
+        });
+      }
+      scheduleRender();
+    })
+    .subscribe();
+})();
 </script>
 <!-- Global avatar file input - must be in DOM not innerHTML -->
 <input type="file" id="global-avatar-input" accept="image/*" style="display:none;" onchange="handleGlobalAvatarUpload(event)" />
