@@ -322,7 +322,7 @@ const OMH = {
       // Fetch reply counts non-blocking — doesn't delay initial render
       const postIds = this.posts.map(p => p.id);
       if (postIds.length) {
-        sb.from('replies').select('post_id, author, content, created_at, media_url').in('post_id', postIds)
+        sb.from('replies').select('post_id, author, author_name, content, created_at').in('post_id', postIds)
           .then(({ data: replyCounts }) => {
             if (!replyCounts) return;
             const countMap   = {};
@@ -346,9 +346,9 @@ const OMH = {
                 if (!exists) {
                   p.replies.push({
                     author:     r.author,
-                    authorName: r.author,
+                    authorName: r.author_name || r.author,
                     content:    r.content,
-                    media:      r.media_url || null,
+                    media:      null,
                     timestamp:  r.created_at
                   });
                 }
@@ -2781,16 +2781,21 @@ function submitReply() {
   if (!post._replyAuthors) post._replyAuthors = [];
   post._replyAuthors.push(replyAuthor);
   post.replyCount = post._replyAuthors.length;
-  // Save to Supabase — poll immediately after so post author sees it
-  sb.from('replies').insert({
-    post_id: post.id,
-    author:  replyAuthor,
-    content: text,
-    media_url: replyMediaUrl || null
-  }).then(({ error }) => {
-    if (error) console.error('Reply save error:', error);
-    // Trigger immediate engagement poll so post author's client updates
-    if (window._pollEngagement) window._pollEngagement();
+  // Save reply to DB — try insert and show any error so we can debug
+  const replyPayload = {
+    id:          'r-' + Date.now() + '-' + Math.random().toString(36).slice(2,7),
+    post_id:     post.id,
+    author:      replyAuthor,
+    author_name: OMH.currentUser.fullName || replyAuthor,
+    content:     text
+  };
+  sb.from('replies').insert(replyPayload).then(({ error }) => {
+    if (error) {
+      console.error('Reply save error:', error);
+      toast('Comment sync error: ' + error.message, 'error', 6000);
+    } else {
+      if (window._pollEngagement) window._pollEngagement();
+    }
   });
   OMH.pushNotification(post.author, 'reply', replyAuthor, post.id);
   OMH.save();
@@ -4786,7 +4791,7 @@ renderNotifBadge();
       const postIds = OMH.posts.map(p => p.id);
       if (postIds.length) {
         const { data: replyRows } = await sb.from('replies')
-          .select('post_id, author, content, created_at, media_url')
+          .select('post_id, author, author_name, content, created_at')
           .in('post_id', postIds);
 
         if (replyRows) {
@@ -4816,7 +4821,7 @@ renderNotifBadge();
                   author:     r.author,
                   authorName: r.author_name || r.author,
                   content:    r.content,
-                  media:      r.media_url || null,
+                  media:      null,
                   timestamp:  r.created_at
                 });
                 replyAdded = true;
