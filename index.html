@@ -4,13 +4,13 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="theme-color" content="#080810" />
-<meta name="description" content="OneMindHub — Geo-Restricted Direct Democracy. One human. One vote." />
+<meta name="description" content="OneMindHub — Geo-verified civic platform. No shadowbanning. No algorithm manipulation. One person, one vote." />
 <link rel="manifest" href="data:application/json,{&quot;name&quot;:&quot;OneMindHub&quot;,&quot;short_name&quot;:&quot;OMH&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;%23080810&quot;,&quot;theme_color&quot;:&quot;%23080810&quot;,&quot;start_url&quot;:&quot;/&quot;}" />
 <title>OneMindHub</title>
 <link rel="icon" type="image/png" href="https://udufmhupndtuorosogth.supabase.co/storage/v1/object/public/Images/uploads/logo.png" />
 <link rel="apple-touch-icon" href="https://udufmhupndtuorosogth.supabase.co/storage/v1/object/public/Images/uploads/logo.png" />
-<meta property="og:title" content="OneMindHub — Direct Democracy Platform" />
-<meta property="og:description" content="One human. One vote. Geo-verified direct democracy." />
+<meta property="og:title" content="OneMindHub — Your Voice. Your Location. Your Community." />
+<meta property="og:description" content="Geo-verified civic platform. No shadowbanning, no algorithm manipulation, no data harvesting. One person, one vote, always." />
 <meta property="og:url" content="https://onemindhub.com" />
 <meta name="twitter:card" content="summary" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -2094,7 +2094,7 @@ async function activatePremium(tier) {
 const STRIPE_LINKS = {
   monthly: 'https://buy.stripe.com/6oU00ke4rc7EaFNb2q77O02',
   yearly:  'https://buy.stripe.com/6oUfZi9ObgnU0198Ui77O01',
-  founder: 'https://buy.stripe.com/dRmcN6f8v6NkdRZeeC77O09'
+  founder: 'https://buy.stripe.com/8x29AU3pN7Ro8xF5I677O0c'
 };
 
 function launchFounderCheckout() {
@@ -2106,7 +2106,7 @@ function launchFounderCheckout() {
   // Store pending activation — activates automatically when they return to the page
   localStorage.setItem('omh_pending_activation', 'founder');
   // Open Stripe — set success URL to https://onemindhub.com?activated=founder in Stripe dashboard
-  window.open('https://buy.stripe.com/dRmcN6f8v6NkdRZeeC77O09', '_blank');
+  window.open('https://buy.stripe.com/8x29AU3pN7Ro8xF5I677O0c', '_blank');
   toast('Complete payment in the new tab. Your 👑 Founder badge will activate when you return.', 'info', 8000);
 }
 
