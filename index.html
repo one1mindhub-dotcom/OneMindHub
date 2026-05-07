@@ -1803,6 +1803,9 @@ function switchTab(tab) {
   OMH.currentTab = tab;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-'+tab).classList.add('active');
+  // Hide pill on tab switch — new tab starts fresh
+  const pill = document.getElementById('new-posts-pill');
+  if (pill) pill.style.display = 'none';
   renderFeed();
 }
 
@@ -4796,44 +4799,49 @@ async function checkForNewPosts() {
   if (!since) return;
   try {
     const { data } = await sb.from('posts')
-      .select('id')
+      .select('id, author')
       .or('removed.is.null,removed.eq.false')
       .gt('created_at', since);
     if (!data || !data.length) return;
+    // Filter to posts not already in memory
     const trulyNew = data.filter(p => !OMH.posts.find(x => x.id === p.id));
     if (!trulyNew.length) return;
-    // Check scroll position — if already at top just load silently
-    const main = document.querySelector('.main-content, main');
-    const scrollTop = main ? main.scrollTop : window.scrollY;
-    if (scrollTop < 80) {
-      await OMH.fetchPosts(); renderFeed();
-      _latestKnownTimestamp = _getNewestTimestamp();
-      return;
+    // For "Following" tab — only count posts from followed users
+    let relevantNew = trulyNew;
+    if (OMH.currentTab === 'following' && OMH.currentUser) {
+      const following = OMH.currentUser.following || [];
+      relevantNew = trulyNew.filter(p => following.includes(p.author));
+      if (!relevantNew.length) return;
     }
+    // For "Live Votes" tab — handled same (all new posts checked on load)
+    // Always show pill — never auto-load and interrupt reading
     const pill = document.getElementById('new-posts-pill');
     const txt  = document.getElementById('new-posts-pill-text');
     if (pill && txt) {
-      txt.textContent = trulyNew.length === 1 ? '↑ 1 new post' : `↑ ${trulyNew.length} new posts`;
+      txt.textContent = relevantNew.length === 1 ? '↑ 1 new post' : `↑ ${relevantNew.length} new posts`;
       pill.style.display = 'flex';
     }
   } catch(e) {}
 }
 
 async function loadNewPosts() {
-  document.getElementById('new-posts-pill').style.display = 'none';
+  const pill = document.getElementById('new-posts-pill');
+  if (pill) pill.style.display = 'none';
   await OMH.fetchPosts();
   renderFeed();
   _latestKnownTimestamp = _getNewestTimestamp();
-  const main = document.querySelector('.main-content, main');
-  if (main) main.scrollTo({ top: 0, behavior: 'smooth' });
+  // Scroll to top of feed smoothly
+  const feedPage = document.getElementById('page-feed');
+  if (feedPage) feedPage.scrollTo({ top: 0, behavior: 'smooth' });
   else window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-// Hide pill when scrolled to top
+// Hide pill when user scrolls to top of feed
 setTimeout(() => {
-  const main = document.querySelector('.main-content, main, .page.active') || document.documentElement;
-  main.addEventListener('scroll', () => {
-    if ((main.scrollTop || window.scrollY) < 80) {
+  const feedPage = document.getElementById('page-feed');
+  if (!feedPage) return;
+  feedPage.addEventListener('scroll', () => {
+    if (feedPage.scrollTop < 80) {
       const pill = document.getElementById('new-posts-pill');
       if (pill) pill.style.display = 'none';
     }
