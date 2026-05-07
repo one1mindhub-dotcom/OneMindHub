@@ -348,6 +348,9 @@ const OMH = {
     this.notifications = [];
     this.save();
     renderApp();
+    // Update character limit display for pro users
+    const limitEl = document.getElementById('char-limit');
+    if (limitEl) limitEl.textContent = (user.isPremium || user.isFounder) ? '25,000' : '500';
     this.fetchNotifications().then(() => {
       renderNotifBadge();
       if (this.currentPage === 'notifications') renderNotificationsPage();
@@ -927,7 +930,7 @@ document.addEventListener('visibilitychange', async () => {
           <div style="display:flex;gap:12px;align-items:flex-start;">
             <div class="avatar" id="compose-avatar" style="font-size:13px;">?</div>
             <div style="flex:1;">
-              <textarea class="input-field" id="compose-text" placeholder="What does your community think?" rows="2" style="border:none;background:transparent;padding:4px 0;font-size:16px;resize:none;" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px';document.getElementById('char-count').textContent=this.value.length+' / 25000'"></textarea>
+              <textarea class="input-field" id="compose-text" placeholder="What does your community think?" rows="2" style="border:none;background:transparent;padding:4px 0;font-size:16px;resize:none;" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px';(function(el){const isPro=window.OMH&&OMH.currentUser&&(OMH.currentUser.isPremium||OMH.currentUser.isFounder);const max=isPro?25000:500;document.getElementById('char-count').textContent=el.value.length+' / '+max.toLocaleString();})(this)"></textarea>
               <div id="img-preview-wrap" style="display:none;">
                 <img id="img-preview" src="" alt="preview" />
                 <button id="remove-img" onclick="removeImage()">✕</button>
@@ -943,7 +946,7 @@ document.addEventListener('visibilitychange', async () => {
                   </button>
                 </div>
                 <div style="display:flex;gap:8px;align-items:center;">
-                  <span id="char-count" style="font-size:12px;color:var(--muted);">0 / 25000</span>
+                  <span id="char-count" style="font-size:12px;color:var(--muted);">0 / <span id="char-limit">500</span></span>
                   <button class="btn-vote" id="make-vote-btn" onclick="showVoteModal()">🗳️ GeoVote</button>
                   <button class="btn-primary" onclick="submitPost()" style="padding:8px 18px;font-size:13px;">Post</button>
                 </div>
@@ -1159,9 +1162,12 @@ document.addEventListener('visibilitychange', async () => {
           </button>
         </div></div>
       <button class="btn-primary" onclick="doLogin()" style="width:100%;padding:12px;">Sign In</button>
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:2px;">
+        <span class="link" onclick="closeModal('login');showModal('forgot-password')" style="color:var(--muted);">Forgot password?</span>
+        <span class="link" onclick="closeModal('login');showModal('forgot-username')" style="color:var(--muted);">Forgot username?</span>
+      </div>
       <button class="btn-ghost" onclick="closeModal('login');showModal('signup')" style="width:100%;padding:12px;">Create Account</button>
     </div>
-    <div style="text-align:center;margin-top:12px;font-size:12px;color:var(--muted);">Demo: <span class="mono">demo</span> / <span class="mono">demo123</span></div>
     <button data-close="login" class="modal-close-btn">✕</button>
   </div>
 </div>
@@ -1592,7 +1598,7 @@ document.addEventListener('visibilitychange', async () => {
     <div style="display:flex;gap:12px;align-items:flex-start;">
       <div class="avatar" id="compose-modal-avatar" style="width:40px;height:40px;font-size:13px;flex-shrink:0;">?</div>
       <div style="flex:1;">
-        <textarea class="input-field" id="compose-modal-text" placeholder="What does your community think?" rows="4" style="font-size:15px;resize:none;border-color:transparent;background:transparent;padding:4px 0;" oninput="document.getElementById('compose-modal-count').textContent=this.value.length+' / 25000'"></textarea>
+        <textarea class="input-field" id="compose-modal-text" placeholder="What does your community think?" rows="4" style="font-size:15px;resize:none;border-color:transparent;background:transparent;padding:4px 0;" oninput="document.getElementById('compose-modal-count').textContent=this.value.length+' / 500'"></textarea>
         <div id="compose-modal-img-wrap" style="display:none;margin-top:8px;">
           <img id="compose-modal-img" style="max-height:150px;border-radius:10px;border:1px solid var(--border);" />
           <button onclick="removeComposeModalImage()" style="background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:50%;width:22px;height:22px;cursor:pointer;margin-left:8px;font-size:12px;">✕</button>
@@ -1619,7 +1625,7 @@ document.addEventListener('visibilitychange', async () => {
         <button onclick="openVoteFromCompose()" title="Add GeoVote" style="background:none;border:1px solid var(--border);color:var(--text);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Sora',sans-serif;transition:all .2s;display:flex;align-items:center;gap:5px;margin-left:4px;" onmouseover="this.style.borderColor='var(--green)';this.style.color='var(--green)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)'">
           🗳️ GeoVote
         </button>
-        <span id="compose-modal-count" style="font-size:11px;color:var(--muted);margin-left:6px;">0 / 25000</span>
+        <span id="compose-modal-count" style="font-size:11px;color:var(--muted);margin-left:6px;">0 / 500</span>
       </div>
       <button onclick="submitComposeModal()" class="btn-primary" style="padding:9px 22px;font-size:14px;">Post</button>
     </div>
@@ -2210,7 +2216,9 @@ async function uploadToBackblaze(file) {
       embedUrl: `https://iframe.videodelivery.net/${streamUid}`,
       thumbnail: `https://videodelivery.net/${streamUid}/thumbnails/thumbnail.jpg`
     };
-    return `https://videodelivery.net/${streamUid}/manifest/video.m3u8`;
+    // Store the embed URL (not m3u8) so the UID is always extractable on reload
+    // even if the stream_uid column doesn't exist in the DB
+    return `https://iframe.videodelivery.net/${streamUid}`;
 
   } else {
     // Images upload directly to Supabase Storage from browser
@@ -2229,7 +2237,7 @@ async function previewImage(e) {
   if (!IMAGE_TYPES.includes(file.type) && !VIDEO_TYPES.includes(file.type)) {
     toast('File type not supported.', 'error'); return;
   }
-  if (isVideo && file.size > 200 * 1024 * 1024) { toast('Video must be under 200MB.', 'error'); return; }
+  if (isVideo && file.size > 2 * 1024 * 1024 * 1024) { toast('Video must be under 2GB.', 'error'); return; }
   if (!isVideo && file.size > 10 * 1024 * 1024) { toast('Image must be under 10MB.', 'error'); return; }
   if (isVideo) {
     try {
@@ -2538,7 +2546,9 @@ async function submitPost() {
   if (!OMH.currentUser) { showModal('login'); return; }
   const content = document.getElementById('compose-text').value.trim();
   if (!content && !pendingImage && !pendingVote) { toast('Write something or attach a GeoVote first.', 'error'); return; }
-  if (content.length > 25000) { toast('Max 25000 characters.', 'error'); return; }
+  const isPro = OMH.currentUser.isPremium || OMH.currentUser.isFounder;
+  const maxChars = isPro ? 25000 : 500;
+  if (content.length > maxChars) { toast(`Max ${maxChars.toLocaleString()} characters.`, 'error'); return; }
 
   const tags = (content.match(/#\w+/g) || []).map(t => t.slice(1));
   const post = {
@@ -2570,7 +2580,7 @@ async function submitPost() {
   const ta = document.getElementById('compose-text');
   if (ta) { ta.value = ''; ta.style.height = 'auto'; }
   const cc = document.getElementById('char-count');
-  if (cc) cc.textContent = '0 / 25000';
+  if (cc) cc.textContent = '0 / 500';
   removeImage();
   pendingVote = null;
   const voteBtn = document.getElementById('make-vote-btn');
@@ -2599,7 +2609,7 @@ function submitEdit() {
   const postId = document.getElementById('edit-post-id').value;
   const newContent = document.getElementById('edit-text').value.trim();
   if (!newContent) { toast('Post cannot be empty.', 'error'); return; }
-  if (newContent.length > 25000) { toast('Max 25000 characters.', 'error'); return; }
+  if (newContent.length > 500) { toast('Max 500 characters.', 'error'); return; }
   if (OMH.editPost(postId, newContent)) {
     closeModal('edit');
     renderFeed();
@@ -2809,29 +2819,26 @@ function avatarColor(username) {
 
 function renderStreamVideo(streamUid) {
   const cid = 'sv-' + streamUid.replace(/[^a-z0-9]/gi,'').slice(-14);
-  // Load iframe directly — Cloudflare Stream handles its own loading state
-  const iframeHtml = `<iframe src="https://iframe.videodelivery.net/${streamUid}?preload=metadata" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen="true"></iframe>`;
+  const iframeHtml = `<iframe src="https://iframe.videodelivery.net/${streamUid}?preload=auto" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen="true"></iframe>`;
   return `<div id="${cid}" style="position:relative;padding-top:56.25%;margin-top:12px;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--surface);">${iframeHtml}</div>`;
 }
 
+// Extract Cloudflare Stream UID from any video URL or UID string
+function extractStreamUid(str) {
+  if (!str) return null;
+  if (/^[a-f0-9]{32}$/i.test(str.trim())) return str.trim();
+  const m = str.match(/(?:videodelivery\.net|cloudflarestream\.com)\/([a-f0-9]{32})/i);
+  return m ? m[1] : null;
+}
+
 function renderContent(text) {
-  const lines = text.split('\n');
-  const escaped = lines.map(line =>
-    line
-      .replace(/</g,'&lt;').replace(/>/g,'&gt;')
-      .replace(/#(\w+)/g, '<span style="color:var(--accent);cursor:pointer;" onclick="handleSearch(\'#$1\')">#$1</span>')
-      .replace(/\$([A-Za-z]{1,6})/g, (m, t) => `<span style="color:#10b981;cursor:pointer;font-weight:600;" onclick="handleSearch('$${t}')">$${t}</span>`)
-      .replace(/@(\w+)/g, '<span style="color:var(--accent);">@$1</span>')
-  );
-  let result = '';
-  for (let i = 0; i < escaped.length; i++) {
-    if (escaped[i] === '' && i > 0 && escaped[i-1] === '') {
-      result += '<div style="height:10px;"></div>';
-    } else {
-      result += (i > 0 ? '<br>' : '') + escaped[i];
-    }
-  }
-  return result;
+  return text
+    .replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\n\n+/g, '</p><p style="margin:10px 0 0;">')  // double newline = paragraph break
+    .replace(/\n/g, '<br>')                                   // single newline = line break
+    .replace(/#(\w+)/g, '<span style="color:var(--accent);cursor:pointer;" onclick="handleSearch(\'#$1\')">#$1</span>')
+    .replace(/\$([A-Za-z]{1,6})/g, (m, t) => `<span style="color:#10b981;cursor:pointer;font-weight:600;" onclick="handleSearch('$${t}')">$${t}</span>`)
+    .replace(/@(\w+)/g, '<span style="color:var(--accent);">@$1</span>');
 }
 
 // Strip bilingual / secondary names from location strings (take only text before first "/" or "(")
@@ -3044,13 +3051,15 @@ function renderPost(post) {
             ${showFollowBtn ? `<button onclick="OMH.followUser('${post.author}')" style="background:${isFollowingAuthor?'transparent':'rgba(79,110,247,.15)'};color:${isFollowingAuthor?'var(--muted)':'var(--accent)'};border:1px solid ${isFollowingAuthor?'var(--border)':'rgba(79,110,247,.4)'};border-radius:20px;font-size:11px;font-weight:600;padding:2px 10px;cursor:pointer;font-family:'Sora',sans-serif;transition:all .15s;" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">${isFollowingAuthor ? 'Following' : '+ Follow'}</button>` : ''}
           </div>
           <div style="margin-top:6px;font-size:15px;line-height:1.55;word-break:break-word;">${renderContent(post.content)}</div>
-          ${(() => {
-            const streamUid = post.streamUid || (post.image && (post.image.match(/videodelivery\.net\/([a-f0-9]{32,})/i)||[])[1]) || null;
-            if (streamUid) return renderStreamVideo(streamUid);
-            if (!post.image) return '';
-            if (post.image.match(/\.(mp4|webm|mov|m3u8)(\?|$)/i)) return `<video controls style="width:100%;border-radius:12px;margin-top:12px;max-height:400px;border:1px solid var(--border);" src="${post.image}"></video>`;
-            return `<img class="post-img" src="${post.image}" alt="post" loading="lazy" />`;
-          })()}
+          ${post.image ? (
+            post.streamUid
+              ? renderStreamVideo(post.streamUid)
+              : post.image.includes('videodelivery.net')
+                ? renderStreamVideo(post.image.split('/').find(s => s.length === 32) || post.image.split('/')[3])
+                : post.image.match(/\.(mp4|webm|mov)(\?|$)/i)
+                  ? `<video controls style="width:100%;border-radius:12px;margin-top:12px;max-height:400px;border:1px solid var(--border);" src="${post.image}"></video>`
+                  : `<img class="post-img" src="${post.image}" alt="post" loading="lazy" />`
+          ) : ''}
           ${quotedBlock}
           ${voteHtml}
           ${repliesHtml}
@@ -3098,7 +3107,8 @@ function renderPost(post) {
 function energyScore(post) {
   const views    = post.views || 0;
   const votes    = (post.likes || []).length;
-  const comments = (post.replies || []).length;
+  // replies array is only populated in-session; fall back to reply_count from DB
+  const comments = (post.replies || []).length || post.replyCount || 0;
   const raw      = views + votes * 10 + comments * 5;
   const ageMs    = Date.now() - new Date(post.timestamp);
   const ageHrs   = Math.max(ageMs / 3600000, 0.1);
@@ -3111,7 +3121,7 @@ function fmtEnergy(s) {
 }
 function energyBadge(post) {
   const s = energyScore(post);
-  if (s < 1) return '';
+  if (s < 0.1) return ''; // only hide if truly zero
   return `<span class="energy-badge" title="Community Energy score">🔥 ${fmtEnergy(s)}</span>`;
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4125,7 +4135,8 @@ async function confirmDeleteAccount() {
   if (typed !== 'DELETE') { toast('Account deletion cancelled.', 'info'); return; }
   const u = OMH.currentUser;
   await sb.from('posts').delete().eq('author', u.username);
-  await sb.from('notifications').delete().eq('recipient', u.username);
+  await sb.from('notifications').delete().eq('to_user', u.username);
+  await sb.from('notifications').delete().eq('from_user', u.username);
   await sb.from('users').delete().eq('username', u.username);
   OMH.logout();
   toast('Your account has been deleted. Sorry to see you go.', 'info', 5000);
@@ -4181,7 +4192,7 @@ function openComposeModal() {
   const preview = document.getElementById('compose-modal-vote-preview');
   if (preview) preview.style.display = 'none';
   const count = document.getElementById('compose-modal-count');
-  if (count) count.textContent = '0 / 25000';
+  if (count) count.textContent = '0 / 500';
   const av = document.getElementById('compose-modal-avatar');
   if (av && OMH.currentUser) {
     const u = OMH.currentUser;
@@ -4294,7 +4305,7 @@ async function submitComposeModal() {
   const ta = document.getElementById('compose-modal-text');
   const text = ta ? ta.value.trim() : '';
   if (!text && !composeModalImage && !pendingVote) { toast('Write something or attach a GeoVote first.', 'error'); return; }
-  if (text.length > 25000) { toast('Max 25000 characters.', 'error'); return; }
+  if (text.length > 500) { toast('Max 500 characters.', 'error'); return; }
   const tags = (text.match(/#\w+/g) || []).map(function(t){ return t.slice(1); });
   const post = {
     id: 'p-' + Date.now(),
@@ -4508,7 +4519,7 @@ function toggleEmojiPicker() {
         btn.onmouseout = () => btn.style.background = 'none';
         btn.onclick = () => {
           const ta = document.getElementById('compose-modal-text');
-          if (ta) { ta.value += e; ta.focus(); document.getElementById('compose-modal-count').textContent = ta.value.length + ' / 25000'; }
+          if (ta) { ta.value += e; ta.focus(); document.getElementById('compose-modal-count').textContent = ta.value.length + ' / 500'; }
           panel.style.display = 'none';
         };
         panel.appendChild(btn);
@@ -4633,6 +4644,89 @@ document.addEventListener('click', function(e) {
   }
 });
 document.addEventListener('scroll', function() { closeAllMenus(); closeRepostMenu(); }, true);
+</script>
+
+<!-- FORGOT PASSWORD -->
+<div id="modal-forgot-password" class="overlay" style="display:none;" onclick="closeModalOnOverlay(event,'forgot-password')" data-overlay-close="forgot-password">
+  <div class="modal" style="position:relative;max-width:400px;">
+    <button data-close="forgot-password" class="modal-close-btn">✕</button>
+    <div style="text-align:center;margin-bottom:20px;">
+      <div style="font-size:32px;margin-bottom:8px;">🔑</div>
+      <div style="font-size:20px;font-weight:700;">Reset Password</div>
+      <div style="font-size:13px;color:var(--muted);margin-top:6px;">Enter your email and we'll send a reset link</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div><label>Email Address</label><input class="input-field" id="forgot-pw-email" type="email" placeholder="you@example.com" onkeydown="if(event.key==='Enter')doForgotPassword()" /></div>
+      <button class="btn-primary" onclick="doForgotPassword()" style="width:100%;padding:12px;">Send Reset Link</button>
+      <div style="text-align:center;font-size:12px;color:var(--muted);">
+        Remember your password? <span class="link" onclick="closeModal('forgot-password');showModal('login')">Sign in</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FORGOT USERNAME -->
+<div id="modal-forgot-username" class="overlay" style="display:none;" onclick="closeModalOnOverlay(event,'forgot-username')" data-overlay-close="forgot-username">
+  <div class="modal" style="position:relative;max-width:400px;">
+    <button data-close="forgot-username" class="modal-close-btn">✕</button>
+    <div style="text-align:center;margin-bottom:20px;">
+      <div style="font-size:32px;margin-bottom:8px;">👤</div>
+      <div style="font-size:20px;font-weight:700;">Find Your Username</div>
+      <div style="font-size:13px;color:var(--muted);margin-top:6px;">Enter your email and we'll send your username to your inbox</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div><label>Email Address</label><input class="input-field" id="forgot-user-email" type="email" placeholder="you@example.com" onkeydown="if(event.key==='Enter')doForgotUsername()" /></div>
+      <button class="btn-primary" onclick="doForgotUsername()" style="width:100%;padding:12px;">Send Username</button>
+      <div style="text-align:center;font-size:12px;color:var(--muted);">
+        Remember your username? <span class="link" onclick="closeModal('forgot-username');showModal('login')">Sign in</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function doForgotPassword() {
+  const email = document.getElementById('forgot-pw-email').value.trim().toLowerCase();
+  if (!email) { toast('Please enter your email address.', 'error'); return; }
+
+  // Check if email exists in our users table
+  const { data } = await sb.from('users').select('username, email').eq('email', email).single().catch(() => ({ data: null }));
+
+  if (data) {
+    // Use Supabase Auth reset — works if user also has a Supabase Auth account
+    // For plain-table users, this sends to the email regardless
+    try {
+      await sb.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + '/?reset=1'
+      });
+    } catch(e) {}
+  }
+
+  // Always same message — prevent email enumeration
+  toast('If that email is registered, a reset link has been sent. Check your inbox.', 'success', 6000);
+  closeModal('forgot-password');
+}
+
+async function doForgotUsername() {
+  const email = document.getElementById('forgot-user-email').value.trim().toLowerCase();
+  if (!email) { toast('Please enter your email address.', 'error'); return; }
+
+  // Look up username — but never display it in the UI
+  const { data } = await sb.from('users').select('username').eq('email', email).single().catch(() => ({ data: null }));
+
+  if (data && data.username) {
+    // Attempt to send via Supabase Auth email (works if auth is configured)
+    try {
+      await sb.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + '/?username=' + encodeURIComponent(data.username)
+      });
+    } catch(e) {}
+  }
+
+  // Always identical response
+  toast("If that email is registered, we've sent your username to your inbox.", 'success', 6000);
+  closeModal('forgot-username');
+}
 </script>
 </body>
 </html>
