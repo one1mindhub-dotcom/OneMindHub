@@ -3493,10 +3493,7 @@ function renderProfileContent() {
           ${isVideo ? '<div style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,.6);border-radius:4px;font-size:10px;padding:2px 5px;color:#fff;">▶</div>' : ''}
           ${p.vote ? '<div style="position:absolute;top:6px;left:6px;background:rgba(0,0,0,.6);border-radius:4px;font-size:10px;padding:2px 5px;">🗳️</div>' : ''}
           <div style="position:absolute;bottom:0;left:0;right:0;padding:20px 6px 5px;background:linear-gradient(to top,rgba(0,0,0,.8) 0%,transparent 100%);display:flex;justify-content:space-between;align-items:flex-end;">
-            <div style="display:flex;gap:8px;align-items:center;">
-              <span style="font-size:10px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9);">❤️ ${p.likes.length}</span>
-              <span style="font-size:10px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9);">💬 ${p.replies.length || p.replyCount || 0}</span>
-            </div>
+            <span style="font-size:10px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9);">💬 ${p.replies.length || p.replyCount || 0}</span>
             <span style="font-size:10px;font-weight:700;color:#f59e0b;text-shadow:0 1px 3px rgba(0,0,0,.9);">🔥 ${fmtEnergy(energyScore(p, OMH.currentUser?.username))}</span>
           </div>
         </div>`;
@@ -4717,7 +4714,6 @@ renderNotifBadge();
 // Listen for engagement changes (likes, views) on posts and new replies.
 // When another user likes/comments, the post author's client updates immediately.
 (function initRealtime() {
-  // Debounce re-renders to avoid thrashing when multiple events fire at once
   let _renderTimer = null;
   function scheduleRender() {
     clearTimeout(_renderTimer);
@@ -4738,15 +4734,14 @@ renderNotifBadge();
       const updated = payload.new;
       const post = OMH.posts.find(p => p.id === updated.id);
       if (!post) return;
-      // Patch only engagement fields — don't overwrite local state wholesale
-      post.likes    = updated.likes    || post.likes;
-      post.views    = updated.views    != null ? updated.views : post.views;
-      post.removed  = updated.removed  != null ? updated.removed : post.removed;
+      post.likes   = updated.likes  || post.likes;
+      post.views   = updated.views  != null ? updated.views  : post.views;
+      post.removed = updated.removed != null ? updated.removed : post.removed;
       scheduleRender();
     })
     .subscribe();
 
-  // Subscribe to reply INSERT events (comment counts)
+  // Subscribe to reply INSERT events
   sb.channel('replies-engagement')
     .on('postgres_changes', {
       event: 'INSERT',
@@ -4756,15 +4751,11 @@ renderNotifBadge();
       const reply = payload.new;
       const post  = OMH.posts.find(p => p.id === reply.post_id);
       if (!post) return;
-      // Update reply author tracking for energy score
       if (!post._replyAuthors) post._replyAuthors = [];
-      if (!post._replyAuthors.includes(reply.author)) {
-        post._replyAuthors.push(reply.author);
-      }
+      if (!post._replyAuthors.includes(reply.author)) post._replyAuthors.push(reply.author);
       post.replyCount = post._replyAuthors.length;
-      // Also push into in-session replies array if not already there
       const alreadyInSession = post.replies.some(r =>
-        r.author === reply.author && r.timestamp === reply.created_at
+        r.author === reply.author && Math.abs(new Date(r.timestamp) - new Date(reply.created_at)) < 5000
       );
       if (!alreadyInSession && reply.content) {
         post.replies.push({
@@ -4778,6 +4769,53 @@ renderNotifBadge();
       scheduleRender();
     })
     .subscribe();
+
+  // ── Polling fallback ──────────────────────────────────────────────────────
+  // Realtime requires RLS policies — poll every 20s as a reliable safety net.
+  // Fetches only likes+views (lightweight) for all posts, patches in memory.
+  async function pollEngagement() {
+    try {
+      const { data } = await sb.from('posts')
+        .select('id, likes, views')
+        .neq('removed', true);
+      if (!data) return;
+      let changed = false;
+      data.forEach(row => {
+        const post = OMH.posts.find(p => p.id === row.id);
+        if (!post) return;
+        const newLikes = row.likes || [];
+        const newViews = row.views || 0;
+        if (JSON.stringify(post.likes) !== JSON.stringify(newLikes) || post.views !== newViews) {
+          post.likes = newLikes;
+          post.views = newViews;
+          changed = true;
+        }
+      });
+      // Also refresh reply counts
+      const postIds = OMH.posts.map(p => p.id);
+      const { data: replyCounts } = await sb.from('replies')
+        .select('post_id, author').in('post_id', postIds);
+      if (replyCounts) {
+        const countMap = {};
+        replyCounts.forEach(r => {
+          if (!countMap[r.post_id]) countMap[r.post_id] = [];
+          countMap[r.post_id].push(r.author);
+        });
+        OMH.posts.forEach(p => {
+          const fresh = countMap[p.id] || [];
+          if (fresh.length !== (p._replyAuthors || []).length) {
+            p._replyAuthors = fresh;
+            p.replyCount    = fresh.length;
+            changed = true;
+          }
+        });
+      }
+      if (changed) scheduleRender();
+    } catch(e) {}
+  }
+  // Poll immediately once after load, then every 20s
+  setTimeout(pollEngagement, 3000);
+  setInterval(pollEngagement, 20000);
 })();
 </script>
 <!-- Global avatar file input - must be in DOM not innerHTML -->
