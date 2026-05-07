@@ -449,7 +449,8 @@ const OMH = {
       post.likes.push(uid);
       this.pushNotification(post.author, 'like', uid, postId);
     }
-    sb.from('posts').update({ likes: post.likes }).eq('id', postId);
+    sb.from('posts').update({ likes: post.likes }).eq('id', postId)
+      .then(() => { if (window._pollEngagement) window._pollEngagement(); });
     renderFeed();
     if (this.currentPage === 'profile') renderProfileContent();
   },
@@ -4712,110 +4713,115 @@ renderNotifBadge();
 
 // ── Supabase Realtime ─────────────────────────────────────────────────────────
 // Listen for engagement changes (likes, views) on posts and new replies.
-// When another user likes/comments, the post author's client updates immediately.
-(function initRealtime() {
+// ── Live Engagement Sync ──────────────────────────────────────────────────────
+// Polls Supabase every 8s for fresh likes, views, and reply counts.
+// Triggered immediately on page-visibility change (tab refocus).
+// This guarantees cross-account updates regardless of RLS/realtime config.
+(function initEngagementSync() {
   let _renderTimer = null;
+  let _polling = false;
+
   function scheduleRender() {
     clearTimeout(_renderTimer);
     _renderTimer = setTimeout(() => {
       renderFeed();
       if (OMH.currentPage === 'profile') renderProfileContent();
       if (OMH.currentPage === 'nearme')  renderNearMe();
-    }, 120);
+      if (OMH.currentPage === 'explore') renderExploreResults();
+    }, 150);
   }
 
-  // Subscribe to post UPDATE events (likes array, views count change)
-  sb.channel('posts-engagement')
-    .on('postgres_changes', {
-      event: 'UPDATE',
-      schema: 'public',
-      table: 'posts'
-    }, payload => {
-      const updated = payload.new;
-      const post = OMH.posts.find(p => p.id === updated.id);
-      if (!post) return;
-      post.likes   = updated.likes  || post.likes;
-      post.views   = updated.views  != null ? updated.views  : post.views;
-      post.removed = updated.removed != null ? updated.removed : post.removed;
-      scheduleRender();
-    })
-    .subscribe();
-
-  // Subscribe to reply INSERT events
-  sb.channel('replies-engagement')
-    .on('postgres_changes', {
-      event: 'INSERT',
-      schema: 'public',
-      table: 'replies'
-    }, payload => {
-      const reply = payload.new;
-      const post  = OMH.posts.find(p => p.id === reply.post_id);
-      if (!post) return;
-      if (!post._replyAuthors) post._replyAuthors = [];
-      if (!post._replyAuthors.includes(reply.author)) post._replyAuthors.push(reply.author);
-      post.replyCount = post._replyAuthors.length;
-      const alreadyInSession = post.replies.some(r =>
-        r.author === reply.author && Math.abs(new Date(r.timestamp) - new Date(reply.created_at)) < 5000
-      );
-      if (!alreadyInSession && reply.content) {
-        post.replies.push({
-          author: reply.author,
-          authorName: reply.author_name || reply.author,
-          content: reply.content,
-          media: reply.media_url || null,
-          timestamp: reply.created_at
-        });
-      }
-      scheduleRender();
-    })
-    .subscribe();
-
-  // ── Polling fallback ──────────────────────────────────────────────────────
-  // Realtime requires RLS policies — poll every 20s as a reliable safety net.
-  // Fetches only likes+views (lightweight) for all posts, patches in memory.
   async function pollEngagement() {
+    if (_polling) return;
+    _polling = true;
     try {
-      const { data } = await sb.from('posts')
+      // Fetch likes + views for all posts in one lightweight query
+      const { data: postRows } = await sb.from('posts')
         .select('id, likes, views')
         .neq('removed', true);
-      if (!data) return;
+
       let changed = false;
-      data.forEach(row => {
-        const post = OMH.posts.find(p => p.id === row.id);
-        if (!post) return;
-        const newLikes = row.likes || [];
-        const newViews = row.views || 0;
-        if (JSON.stringify(post.likes) !== JSON.stringify(newLikes) || post.views !== newViews) {
-          post.likes = newLikes;
-          post.views = newViews;
-          changed = true;
-        }
-      });
-      // Also refresh reply counts
-      const postIds = OMH.posts.map(p => p.id);
-      const { data: replyCounts } = await sb.from('replies')
-        .select('post_id, author').in('post_id', postIds);
-      if (replyCounts) {
-        const countMap = {};
-        replyCounts.forEach(r => {
-          if (!countMap[r.post_id]) countMap[r.post_id] = [];
-          countMap[r.post_id].push(r.author);
-        });
-        OMH.posts.forEach(p => {
-          const fresh = countMap[p.id] || [];
-          if (fresh.length !== (p._replyAuthors || []).length) {
-            p._replyAuthors = fresh;
-            p.replyCount    = fresh.length;
+
+      if (postRows) {
+        postRows.forEach(row => {
+          const post = OMH.posts.find(p => p.id === row.id);
+          if (!post) return;
+          const newLikes  = row.likes || [];
+          const newViews  = row.views || 0;
+          const likesChanged  = JSON.stringify(post.likes) !== JSON.stringify(newLikes);
+          const viewsChanged  = post.views !== newViews;
+          if (likesChanged || viewsChanged) {
+            post.likes  = newLikes;
+            post.views  = newViews;
             changed = true;
           }
         });
       }
+
+      // Fetch reply counts in same poll cycle
+      const postIds = OMH.posts.map(p => p.id);
+      if (postIds.length) {
+        const { data: replyRows } = await sb.from('replies')
+          .select('post_id, author, created_at, content, author_name, media_url')
+          .in('post_id', postIds);
+
+        if (replyRows) {
+          const countMap = {};
+          const contentMap = {};
+          replyRows.forEach(r => {
+            if (!countMap[r.post_id])   countMap[r.post_id]   = [];
+            if (!contentMap[r.post_id]) contentMap[r.post_id] = [];
+            countMap[r.post_id].push(r.author);
+            contentMap[r.post_id].push(r);
+          });
+          OMH.posts.forEach(p => {
+            const freshAuthors  = countMap[p.id]   || [];
+            const freshReplies  = contentMap[p.id] || [];
+            const prevCount     = (p._replyAuthors || []).length;
+            if (freshAuthors.length !== prevCount) {
+              p._replyAuthors = freshAuthors;
+              p.replyCount    = freshAuthors.length;
+              // Merge any new replies into the in-session array
+              freshReplies.forEach(r => {
+                const exists = p.replies.some(existing =>
+                  existing.author === r.author &&
+                  Math.abs(new Date(existing.timestamp) - new Date(r.created_at)) < 5000
+                );
+                if (!exists) {
+                  p.replies.push({
+                    author:     r.author,
+                    authorName: r.author_name || r.author,
+                    content:    r.content,
+                    media:      r.media_url || null,
+                    timestamp:  r.created_at
+                  });
+                }
+              });
+              changed = true;
+            }
+          });
+        }
+      }
+
       if (changed) scheduleRender();
-    } catch(e) {}
+    } catch(e) {
+      console.warn('Engagement poll error:', e);
+    } finally {
+      _polling = false;
+    }
   }
-  // Poll immediately once after load, then every 20s
-  setTimeout(pollEngagement, 3000);
-  setInterval(pollEngagement, 20000);
+
+  // Start polling: first run after 2s, then every 8s
+  setTimeout(pollEngagement, 2000);
+  setInterval(pollEngagement, 8000);
+
+  // Immediate poll when user returns to tab
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') pollEngagement();
+  });
+
+  // Also expose so likePost can trigger an immediate refresh
+  window._pollEngagement = pollEngagement;
 })();
 </script>
 <!-- Global avatar file input - must be in DOM not innerHTML -->
