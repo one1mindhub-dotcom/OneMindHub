@@ -2811,40 +2811,38 @@ function submitReply() {
   if (!post) return;
   const replyAuthor = OMH.currentUser.username;
   const ts = new Date().toISOString();
+  const replyId = 'r-' + Date.now() + '-' + Math.random().toString(36).slice(2,7);
   const replyObj = {
+    id: replyId,
     author: replyAuthor,
     authorName: OMH.currentUser.fullName,
     content: text,
+    likes: [],
     media: replyMediaUrl || null,
     timestamp: ts
   };
   post.replies.push(replyObj);
-  // Keep replyCount and _replyAuthors in sync for energy score
   if (!post._replyAuthors) post._replyAuthors = [];
   post._replyAuthors.push(replyAuthor);
   post.replyCount = post._replyAuthors.length;
-  // Save reply to DB — try insert and show any error so we can debug
-  const replyPayload = {
-    id:          'r-' + Date.now() + '-' + Math.random().toString(36).slice(2,7),
-    post_id:     post.id,
-    author:      replyAuthor,
-    author_name: OMH.currentUser.fullName || replyAuthor,
-    content:     text
-  };
-  sb.from('replies').insert(replyPayload).then(({ error }) => {
-    if (error) {
-      console.error('Reply save error:', error);
-      toast('Comment sync error: ' + error.message, 'error', 6000);
-    } else {
-      if (window._pollEngagement) window._pollEngagement();
-    }
+  sb.from('replies').insert({
+    id: replyId, post_id: post.id,
+    author: replyAuthor, author_name: OMH.currentUser.fullName || replyAuthor,
+    content: text
+  }).then(({ error }) => {
+    if (error) { console.error('Reply save error:', error); toast('Comment sync error: ' + error.message, 'error', 6000); }
+    else if (window._pollEngagement) window._pollEngagement();
   });
   OMH.pushNotification(post.author, 'reply', replyAuthor, post.id);
   OMH.save();
   replyMediaUrl = null;
   closeModal('reply');
-  renderFeed();
-  setTimeout(() => toast('Reply posted.', 'success', 2500), 60);
+  // Open detail modal to show the comment
+  openPostDetail(post.id);
+  setTimeout(() => {
+    const s = document.getElementById('post-detail-scroll');
+    if (s) s.scrollTop = s.scrollHeight;
+  }, 150);
 }
 
 // Search
@@ -3108,7 +3106,7 @@ function renderPost(post) {
         <button onclick="toggleCommentSort('${post.id}')" style="font-size:10px;color:var(--muted);background:none;border:1px solid var(--border);border-radius:10px;padding:1px 7px;cursor:pointer;font-family:'Sora',sans-serif;">${sortMode==='popular'?'Popular':'Recent'}</button>
       </div>` +
       preview.map(r => renderComment(r, post.id, postAuthor, viewer)).join('') +
-      (more ? `<div style="font-size:11px;color:var(--accent);margin-top:8px;cursor:pointer;font-weight:600;" onclick="openReply('${post.id}')">View all ${post.replies.length} comments →</div>` : '') +
+      (more ? `<div style="font-size:11px;color:var(--accent);margin-top:8px;cursor:pointer;font-weight:600;" onclick="event.stopPropagation();openPostDetail('${post.id}')">View all ${post.replies.length} comments →</div>` : '') +
     `</div>`;
   }
 
@@ -3189,7 +3187,7 @@ function renderPost(post) {
           ${voteHtml}
           ${repliesHtml}
           <div style="display:flex;gap:0;margin-top:12px;align-items:center;justify-content:space-between;">
-            <button onclick="event.stopPropagation();openReply('${post.id}')" style="background:none;border:none;cursor:pointer;color:var(--muted);display:flex;align-items:center;gap:4px;font-size:13px;font-family:'Sora',sans-serif;padding:6px 8px;border-radius:8px;transition:all .15s;" onmouseover="this.style.color='var(--accent)';this.style.background='var(--glow)'" onmouseout="this.style.color='var(--muted)';this.style.background='none'">
+            <button onclick="event.stopPropagation();openPostDetail('${post.id}')" style="background:none;border:none;cursor:pointer;color:var(--muted);display:flex;align-items:center;gap:4px;font-size:13px;font-family:'Sora',sans-serif;padding:6px 8px;border-radius:8px;transition:all .15s;" onmouseover="this.style.color='var(--accent)';this.style.background='var(--glow)'" onmouseout="this.style.color='var(--muted)';this.style.background='none'">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               <span>${post.replies.length || post.replyCount || ''}</span>
             </button>
@@ -3272,7 +3270,239 @@ function energyBadge(post) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── Comment system ────────────────────────────────────────────────────────────
+// ── Post Detail Modal ─────────────────────────────────────────────────────────
+let _detailPostId   = null;
+let _detailSort     = 'popular'; // 'popular' | 'recent'
+
+function openPostDetail(postId) {
+  const post = OMH.posts.find(p => p.id === postId);
+  if (!post) return;
+  _detailPostId = postId;
+  _detailSort   = post._commentSort || 'popular';
+
+  // Render the post content (simplified, no nested comment preview)
+  const u       = OMH.currentUser;
+  const author  = OMH.users.find(x => x.username === post.author);
+  const av      = author?.avatarUrl;
+  const avEl    = av
+    ? `<img src="${av}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+    : `<div class="avatar" style="width:40px;height:40px;flex-shrink:0;background:${avatarColor(post.author)};">${initials(author?.fullName||post.author)}</div>`;
+
+  const contentEl = document.getElementById('post-detail-content');
+  contentEl.innerHTML = `
+    <div style="display:flex;gap:12px;align-items:flex-start;">
+      ${avEl}
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span style="font-weight:700;font-size:14px;cursor:pointer;" onclick="viewUserProfile('${post.author}');closeModal('post-detail')">${author?.fullName||post.author}</span>
+          <span style="color:var(--muted);font-size:12px;">@${post.author}</span>
+          <span style="color:var(--muted);font-size:12px;">· ${timeAgo(post.timestamp)}</span>
+        </div>
+        <div style="font-size:15px;line-height:1.6;margin-top:6px;word-break:break-word;">${renderContent(post.content)}</div>
+        ${post.image ? (() => {
+          const img = post.image;
+          const m   = img.match(/([a-f0-9]{32})/i);
+          if (img.includes('videodelivery.net') || img.includes('cloudflarestream.com')) {
+            return m ? renderStreamVideo(m[1]) : '';
+          }
+          if (img.match(/\.(mp4|webm|mov)(\?|$)/i))
+            return `<video controls style="width:100%;border-radius:12px;margin-top:10px;border:1px solid var(--border);" src="${img}"></video>`;
+          return `<img src="${img}" style="width:100%;border-radius:12px;margin-top:10px;max-height:400px;object-fit:cover;" loading="lazy">`;
+        })() : ''}
+        <div style="display:flex;align-items:center;gap:16px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+          <button onclick="OMH.likePost('${post.id}');openPostDetail('${post.id}')" style="display:flex;align-items:center;gap:4px;background:none;border:none;cursor:pointer;color:${u&&post.likes.includes(u.username)?'var(--red)':'var(--muted)'};font-size:13px;font-family:'Sora',sans-serif;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="${u&&post.likes.includes(u.username)?'currentColor':'none'}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            ${post.likes.length||0} Likes
+          </button>
+          <span style="font-size:13px;color:var(--muted);">${post.replies.length||post.replyCount||0} Comments</span>
+          ${energyBadge(post)}
+        </div>
+      </div>
+    </div>`;
+
+  // Show/hide composer
+  document.getElementById('post-detail-composer').style.display     = u ? 'block' : 'none';
+  document.getElementById('post-detail-login-prompt').style.display = u ? 'none'  : 'block';
+  if (u) {
+    const me   = u;
+    const myAv = me.avatarUrl;
+    document.getElementById('detail-reply-avatar').innerHTML = myAv
+      ? `<img src="${myAv}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">`
+      : `<div style="width:32px;height:32px;border-radius:50%;background:${avatarColor(me.username)};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;">${(me.username||'?')[0].toUpperCase()}</div>`;
+    document.getElementById('detail-reply-text').value = '';
+  }
+
+  renderDetailComments();
+  showModal('post-detail');
+  // Scroll to top of modal
+  setTimeout(() => { const s = document.getElementById('post-detail-scroll'); if(s) s.scrollTop=0; }, 50);
+}
+
+function renderDetailComments() {
+  const post = OMH.posts.find(p => p.id === _detailPostId);
+  if (!post) return;
+  const viewer     = OMH.currentUser?.username;
+  const postAuthor = post.author;
+
+  // Sort
+  const sorted = post.replies.slice().sort((a, b) => {
+    if (_detailSort === 'popular') {
+      const diff = (b.likes||[]).length - (a.likes||[]).length;
+      if (diff !== 0) return diff;
+    }
+    return new Date(a.timestamp||a.created_at) - new Date(b.timestamp||b.created_at);
+  });
+
+  const countEl = document.getElementById('post-detail-comment-count');
+  if (countEl) countEl.textContent = `${sorted.length} comment${sorted.length!==1?'s':''}`;
+
+  // Update sort buttons
+  ['popular','recent'].forEach(s => {
+    const btn = document.getElementById('sort-btn-'+s);
+    if (!btn) return;
+    btn.style.background  = _detailSort===s ? 'var(--accent)' : 'none';
+    btn.style.color       = _detailSort===s ? '#fff' : 'var(--muted)';
+    btn.style.borderColor = _detailSort===s ? 'var(--accent)' : 'var(--border)';
+  });
+
+  const el = document.getElementById('post-detail-comments');
+  if (!sorted.length) {
+    el.innerHTML = '<div style="padding:24px 0;text-align:center;color:var(--muted);font-size:14px;">No comments yet. Be the first!</div>';
+    return;
+  }
+
+  el.innerHTML = sorted.map(r => {
+    const replyUser   = OMH.users.find(u => u.username === r.author);
+    const replyAvatar = replyUser?.avatarUrl;
+    const avEl2       = replyAvatar
+      ? `<img src="${replyAvatar}" style="width:34px;height:34px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+      : `<div class="avatar" style="width:34px;height:34px;font-size:11px;flex-shrink:0;background:${avatarColor(r.author)};">${initials(r.authorName||r.author)}</div>`;
+    const isOP        = r.author === postAuthor;
+    const rLikes      = r.likes || [];
+    const likedByMe   = viewer && rLikes.includes(viewer);
+    const canLike     = viewer && viewer !== r.author;
+    const canDelete   = viewer && (viewer === r.author || OMH.currentUser?.isAdmin);
+    const replyId     = r.id || (r.author + '_' + (r.timestamp||r.created_at||''));
+    return `
+    <div style="display:flex;gap:10px;padding:14px 0;border-bottom:1px solid var(--border);">
+      ${avEl2}
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px;">
+          <span style="font-weight:700;font-size:13px;cursor:pointer;" onclick="viewUserProfile('${r.author}');closeModal('post-detail')">${r.authorName||r.author}</span>
+          <span style="color:var(--muted);font-size:11px;">@${r.author}</span>
+          ${isOP ? `<span style="background:rgba(79,110,247,.12);color:var(--accent);font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;">OP</span>` : ''}
+          <span style="color:var(--muted);font-size:11px;">${timeAgo(r.timestamp||r.created_at)}</span>
+        </div>
+        <div style="font-size:14px;line-height:1.5;color:var(--text);word-break:break-word;">${r.content||''}</div>
+        ${r.media ? `<img src="${r.media}" style="margin-top:6px;max-width:200px;border-radius:8px;" onerror="this.style.display='none'">` : ''}
+        <div style="display:flex;align-items:center;gap:14px;margin-top:8px;">
+          ${canLike ? `<button data-post-id="${_detailPostId}" data-reply-id="${r.id}" onclick="likeDetailComment(this)" style="display:flex;align-items:center;gap:3px;background:none;border:none;cursor:pointer;font-size:12px;color:${likedByMe?'var(--red)':'var(--muted)'};font-family:'Sora',sans-serif;padding:0;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="${likedByMe?'currentColor':'none'}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            ${rLikes.length > 0 ? rLikes.length : 'Like'}
+          </button>` : (rLikes.length > 0 ? `<span style="font-size:12px;color:var(--muted);">❤️ ${rLikes.length}</span>` : '')}
+          ${canDelete ? `<button data-post-id="${_detailPostId}" data-reply-id="${r.id}" onclick="deleteDetailComment(this)" style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--muted);font-family:'Sora',sans-serif;padding:0;opacity:.6;">Delete</button>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function setDetailSort(sort) {
+  _detailSort = sort;
+  const post = OMH.posts.find(p => p.id === _detailPostId);
+  if (post) post._commentSort = sort;
+  renderDetailComments();
+}
+
+function likeDetailComment(btn) {
+  if (!OMH.currentUser) { showModal('login'); return; }
+  const postId  = btn.dataset.postId;
+  const replyId = btn.dataset.replyId;
+  const post    = OMH.posts.find(p => p.id === postId);
+  if (!post) return;
+  const viewer = OMH.currentUser.username;
+  const reply  = post.replies.find(r => r.id === replyId);
+  if (!reply || reply.author === viewer) return;
+  if (!reply.likes) reply.likes = [];
+  const alreadyLiked = reply.likes.includes(viewer);
+  if (alreadyLiked) {
+    reply.likes = reply.likes.filter(u => u !== viewer);
+  } else {
+    reply.likes.push(viewer);
+    const authorUser = OMH.users.find(u => u.username === reply.author);
+    if (authorUser) {
+      authorUser.commentLikesReceived = (authorUser.commentLikesReceived||0) + 1;
+      sb.from('users').update({ comment_likes_received: authorUser.commentLikesReceived }).eq('username', reply.author).catch(()=>{});
+    }
+  }
+  sb.from('replies').update({ likes: reply.likes }).eq('id', reply.id).catch(()=>{});
+  renderDetailComments();
+  renderFeed();
+}
+
+function deleteDetailComment(btn) {
+  if (!OMH.currentUser) return;
+  if (!confirm('Delete this comment?')) return;
+  const postId  = btn.dataset.postId;
+  const replyId = btn.dataset.replyId;
+  const post    = OMH.posts.find(p => p.id === postId);
+  if (!post) return;
+  const viewer = OMH.currentUser.username;
+  const idx    = post.replies.findIndex(r => r.id === replyId);
+  if (idx === -1) return;
+  const reply = post.replies[idx];
+  if (reply.author !== viewer && !OMH.currentUser.isAdmin) return;
+  post.replies.splice(idx, 1);
+  if (post._replyAuthors) {
+    const ai = post._replyAuthors.indexOf(reply.author);
+    if (ai >= 0) post._replyAuthors.splice(ai, 1);
+    post.replyCount = post._replyAuthors.length;
+  }
+  sb.from('replies').delete().eq('id', reply.id).catch(e => console.error('Delete reply error:', e));
+  renderDetailComments();
+  renderFeed();
+  toast('Comment deleted.', 'info', 2000);
+}
+
+function submitDetailReply() {
+  const text = document.getElementById('detail-reply-text').value.trim();
+  if (!text) return;
+  if (!OMH.currentUser) { showModal('login'); return; }
+  const post = OMH.posts.find(p => p.id === _detailPostId);
+  if (!post) return;
+  const replyAuthor = OMH.currentUser.username;
+  const ts = new Date().toISOString();
+  const replyId = 'r-' + Date.now() + '-' + Math.random().toString(36).slice(2,7);
+  const replyObj = {
+    id: replyId, author: replyAuthor,
+    authorName: OMH.currentUser.fullName,
+    content: text, likes: [], media: null, timestamp: ts
+  };
+  post.replies.push(replyObj);
+  if (!post._replyAuthors) post._replyAuthors = [];
+  post._replyAuthors.push(replyAuthor);
+  post.replyCount = post._replyAuthors.length;
+  // Save to DB
+  sb.from('replies').insert({
+    id: replyId, post_id: post.id,
+    author: replyAuthor, author_name: OMH.currentUser.fullName||replyAuthor,
+    content: text
+  }).then(({ error }) => {
+    if (error) console.error('Reply save error:', error);
+    else if (window._pollEngagement) window._pollEngagement();
+  });
+  OMH.pushNotification(post.author, 'reply', replyAuthor, post.id);
+  OMH.save();
+  document.getElementById('detail-reply-text').value = '';
+  renderDetailComments();
+  renderFeed();
+  // Scroll to bottom of comments
+  setTimeout(() => {
+    const s = document.getElementById('post-detail-scroll');
+    if (s) s.scrollTop = s.scrollHeight;
+  }, 100);
+}
+// ─────────────────────────────────────────────────────────────────────────────
 function renderComment(r, postId, postAuthor, viewer) {
   const replyUser   = OMH.users.find(u => u.username === r.author);
   const replyAvatar = replyUser?.avatarUrl;
@@ -5174,7 +5404,13 @@ setTimeout(() => {
         }
       }
 
-      if (changed) scheduleRender();
+      if (changed) {
+        scheduleRender();
+        // Also refresh open post detail modal if visible
+        if (_detailPostId && document.getElementById('modal-post-detail')?.style.display !== 'none') {
+          renderDetailComments();
+        }
+      }
     } catch(e) {
       console.warn('Engagement poll error:', e);
     } finally {
@@ -5292,7 +5528,52 @@ async function doForgotUsername() {
   toast("If that email is registered, we've sent your username to your inbox.", 'success', 7000);
 }
 </script>
-<!-- LEGAL MODAL -->
+<!-- POST DETAIL MODAL -->
+<div id="modal-post-detail" class="overlay" style="display:none;align-items:flex-start;padding:20px;" onclick="closeModalOnOverlay(event,'post-detail')" data-overlay-close="post-detail">
+  <div style="background:var(--card);border-radius:18px;width:100%;max-width:600px;margin:auto;max-height:90vh;display:flex;flex-direction:column;position:relative;overflow:hidden;">
+    <!-- Header -->
+    <div style="display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border);flex-shrink:0;">
+      <button onclick="closeModal('post-detail')" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;border-radius:50%;display:flex;" onmouseover="this.style.background='var(--surface)'" onmouseout="this.style.background='none'">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      </button>
+      <span style="font-size:16px;font-weight:700;">Post</span>
+    </div>
+    <!-- Scrollable content -->
+    <div id="post-detail-scroll" style="overflow-y:auto;flex:1;">
+      <!-- Post content -->
+      <div id="post-detail-content" style="padding:16px 20px;border-bottom:1px solid var(--border);"></div>
+      <!-- Comment sort + count -->
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 20px;border-bottom:1px solid var(--border);flex-shrink:0;">
+        <span id="post-detail-comment-count" style="font-size:13px;font-weight:600;color:var(--muted);"></span>
+        <div style="display:flex;gap:6px;">
+          <button id="sort-btn-popular" onclick="setDetailSort('popular')" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;font-family:'Sora',sans-serif;font-weight:600;">Popular</button>
+          <button id="sort-btn-recent" onclick="setDetailSort('recent')" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--border);background:none;color:var(--muted);cursor:pointer;font-family:'Sora',sans-serif;font-weight:600;">Recent</button>
+        </div>
+      </div>
+      <!-- Comments list -->
+      <div id="post-detail-comments" style="padding:0 20px;"></div>
+    </div>
+    <!-- Reply composer -->
+    <div id="post-detail-composer" style="display:none;border-top:1px solid var(--border);padding:12px 20px;flex-shrink:0;background:var(--card);">
+      <div style="display:flex;gap:10px;align-items:flex-start;">
+        <div id="detail-reply-avatar" style="width:32px;height:32px;border-radius:50%;flex-shrink:0;"></div>
+        <div style="flex:1;">
+          <textarea id="detail-reply-text" placeholder="Add a comment…" rows="2" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:8px 12px;font-size:14px;color:var(--text);font-family:'Sora',sans-serif;resize:none;outline:none;" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
+          <div style="display:flex;justify-content:flex-end;margin-top:6px;">
+            <button onclick="submitDetailReply()" style="background:var(--accent);color:#fff;border:none;border-radius:20px;padding:6px 18px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Sora',sans-serif;">Reply</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Login prompt for guests -->
+    <div id="post-detail-login-prompt" style="display:none;border-top:1px solid var(--border);padding:12px 20px;text-align:center;flex-shrink:0;">
+      <button onclick="closeModal('post-detail');showModal('login')" style="background:var(--accent);color:#fff;border:none;border-radius:20px;padding:8px 24px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Sora',sans-serif;">Sign in to comment</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
 <div id="modal-legal" class="overlay" style="display:none;" onclick="closeModalOnOverlay(event,'legal')" data-overlay-close="legal">
   <div class="modal" style="position:relative;max-width:640px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;">
     <button data-close="legal" class="modal-close-btn">✕</button>
