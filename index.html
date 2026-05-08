@@ -1199,15 +1199,15 @@ document.addEventListener('visibilitychange', async () => {
         <div style="display:flex;justify-content:space-between;"><span>Video 25%→100%</span><span style="color:var(--text);font-weight:600;">+2→+5 pts</span></div>
         <div style="display:flex;justify-content:space-between;"><span>Like / Heart</span><span style="color:var(--text);font-weight:600;">+3 pts</span></div>
         <div style="display:flex;justify-content:space-between;"><span>Comment</span><span style="color:var(--text);font-weight:600;">+5 pts</span></div>
-        <div style="display:flex;justify-content:space-between;"><span>Reply to comment</span><span style="color:var(--text);font-weight:600;">+2 pts</span></div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span>GeoVote cast</span><span style="color:var(--text);font-weight:600;">+10 pts</span></div>
-        <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">Comment likes sort threads only — don't add post energy. 1 view/user/24h. No self-engagement.</div>
+        <div style="display:flex;justify-content:space-between;"><span>GeoVote cast</span><span style="color:var(--text);font-weight:600;">+10 pts</span></div>
+        <div style="font-size:10px;color:var(--muted);margin:4px 0 6px;">No self-engagement · 1 view/user/24h · Comment likes don't add post energy</div>
         <div style="border-top:1px solid var(--border);padding-top:7px;font-weight:600;color:var(--text);margin-bottom:4px;">Where energy applies</div>
         <div style="display:flex;justify-content:space-between;"><span>Main Feed / Near Me</span><span style="color:var(--text);font-weight:600;">Chronological</span></div>
-        <div style="display:flex;justify-content:space-between;"><span>Explore → Trending Now</span><span style="color:var(--text);font-weight:600;">24h · 0.97 decay</span></div>
-        <div style="display:flex;justify-content:space-between;"><span>Explore → This Week</span><span style="color:var(--text);font-weight:600;">7d · 0.99 decay</span></div>
-        <div style="display:flex;justify-content:space-between;"><span>Explore → This Month</span><span style="color:var(--text);font-weight:600;">30d · 0.999 decay</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>Explore → Trending</span><span style="color:var(--text);font-weight:600;">24h · weekly decay</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>Explore → This Week</span><span style="color:var(--text);font-weight:600;">7d · weekly decay</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>Explore → This Month</span><span style="color:var(--text);font-weight:600;">30d · weekly decay</span></div>
         <div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span>Explore → All Time</span><span style="color:var(--text);font-weight:600;">Raw score</span></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span>GeoVotes</span><span style="color:var(--text);font-weight:600;">Closing soonest</span></div>
         <div style="border-top:1px solid var(--border);padding-top:7px;font-size:10px;">No secret ranking. No promoted content. No pay-to-play.</div>
       </div>
     </div>
@@ -3250,9 +3250,9 @@ function energyScore(post, viewerUsername, rawOnly) {
   const views = post.views || 0;
   const raw   = views + likeCount * 3 + geoVoteCount * 10 + commentCount * 5;
   if (rawOnly) return raw; // used by Explore tabs which apply their own decay
-  const ageMs  = Date.now() - new Date(post.timestamp);
-  const ageHrs = Math.max(ageMs / 3600000, 0.1);
-  return raw / Math.pow(ageHrs, 0.8);
+  const ageMs   = Date.now() - new Date(post.timestamp);
+  const ageWeeks = Math.max(ageMs / (86400000 * 7), 0.01); // floor at ~1.7 hours
+  return raw / Math.pow(ageWeeks, 0.8);
 }
 function fmtEnergy(s) {
   if (s >= 1000000) return (s/1000000).toFixed(1)+'M';
@@ -3377,12 +3377,14 @@ function renderDetailComments() {
     const avEl2       = replyAvatar
       ? `<img src="${replyAvatar}" style="width:34px;height:34px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
       : `<div class="avatar" style="width:34px;height:34px;font-size:11px;flex-shrink:0;background:${avatarColor(r.author)};">${initials(r.authorName||r.author)}</div>`;
-    const isOP        = r.author === postAuthor;
-    const rLikes      = r.likes || [];
-    const likedByMe   = viewer && rLikes.includes(viewer);
-    const canLike     = viewer && viewer !== r.author;
-    const canDelete   = viewer && (viewer === r.author || OMH.currentUser?.isAdmin);
-    const replyId     = r.id || (r.author + '_' + (r.timestamp||r.created_at||''));
+    const isOP      = r.author === postAuthor;
+    const rLikes    = r.likes || [];
+    const likedByMe = viewer && rLikes.includes(viewer);
+    // Use r.id if available, otherwise composite — used consistently everywhere
+    const replyId   = r.id && r.id !== 'undefined' ? r.id : (r.author + '|||' + (r.timestamp||r.created_at||''));
+    const canLike   = viewer && viewer !== r.author;
+    const canDelete = viewer && (viewer === r.author || OMH.currentUser?.isAdmin);
+    const content   = (r.content || '').trim();
     return `
     <div style="display:flex;gap:10px;padding:14px 0;border-bottom:1px solid var(--border);">
       ${avEl2}
@@ -3393,14 +3395,15 @@ function renderDetailComments() {
           ${isOP ? `<span style="background:rgba(79,110,247,.12);color:var(--accent);font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;">OP</span>` : ''}
           <span style="color:var(--muted);font-size:11px;">${timeAgo(r.timestamp||r.created_at)}</span>
         </div>
-        <div style="font-size:14px;line-height:1.5;color:var(--text);word-break:break-word;">${r.content||''}</div>
+        ${content ? `<div style="font-size:14px;line-height:1.5;color:var(--text);word-break:break-word;">${content}</div>` : '<div style="font-size:13px;color:var(--muted);font-style:italic;">[empty comment]</div>'}
         ${r.media ? `<img src="${r.media}" style="margin-top:6px;max-width:200px;border-radius:8px;" onerror="this.style.display='none'">` : ''}
         <div style="display:flex;align-items:center;gap:14px;margin-top:8px;">
-          ${canLike ? `<button data-post-id="${_detailPostId}" data-reply-id="${r.id}" onclick="likeDetailComment(this)" style="display:flex;align-items:center;gap:3px;background:none;border:none;cursor:pointer;font-size:12px;color:${likedByMe?'var(--red)':'var(--muted)'};font-family:'Sora',sans-serif;padding:0;">
+          ${canLike ? `
+          <button data-post-id="${_detailPostId}" data-reply-id="${replyId}" onclick="likeDetailComment(this)" style="display:flex;align-items:center;gap:4px;background:none;border:none;cursor:pointer;font-size:12px;color:${likedByMe?'var(--red)':'var(--muted)'};font-family:'Sora',sans-serif;padding:0;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='${likedByMe?'var(--red)':'var(--muted)'}'">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="${likedByMe?'currentColor':'none'}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
             ${rLikes.length > 0 ? rLikes.length : 'Like'}
-          </button>` : (rLikes.length > 0 ? `<span style="font-size:12px;color:var(--muted);">❤️ ${rLikes.length}</span>` : '')}
-          ${canDelete ? `<button data-post-id="${_detailPostId}" data-reply-id="${r.id}" onclick="deleteDetailComment(this)" style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--muted);font-family:'Sora',sans-serif;padding:0;opacity:.6;">Delete</button>` : ''}
+          </button>` : rLikes.length > 0 ? `<span style="font-size:12px;color:var(--muted);">❤️ ${rLikes.length}</span>` : ''}
+          ${canDelete ? `<button data-post-id="${_detailPostId}" data-reply-id="${replyId}" onclick="deleteDetailComment(this)" style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--red);font-family:'Sora',sans-serif;padding:0;opacity:.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.7'">Delete</button>` : ''}
         </div>
       </div>
     </div>`;
@@ -3421,7 +3424,7 @@ function likeDetailComment(btn) {
   const post    = OMH.posts.find(p => p.id === postId);
   if (!post) return;
   const viewer = OMH.currentUser.username;
-  const reply  = post.replies.find(r => r.id === replyId);
+  const reply  = findReply(post, replyId);
   if (!reply || reply.author === viewer) return;
   if (!reply.likes) reply.likes = [];
   const alreadyLiked = reply.likes.includes(viewer);
@@ -3435,7 +3438,7 @@ function likeDetailComment(btn) {
       sb.from('users').update({ comment_likes_received: authorUser.commentLikesReceived }).eq('username', reply.author).catch(()=>{});
     }
   }
-  sb.from('replies').update({ likes: reply.likes }).eq('id', reply.id).catch(()=>{});
+  if (reply.id) sb.from('replies').update({ likes: reply.likes }).eq('id', reply.id).catch(()=>{});
   renderDetailComments();
   renderFeed();
 }
@@ -3448,8 +3451,8 @@ function deleteDetailComment(btn) {
   const post    = OMH.posts.find(p => p.id === postId);
   if (!post) return;
   const viewer = OMH.currentUser.username;
-  const idx    = post.replies.findIndex(r => r.id === replyId);
-  if (idx === -1) return;
+  const idx    = findReplyIdx(post, replyId);
+  if (idx === -1) { toast('Could not find comment to delete.', 'error'); return; }
   const reply = post.replies[idx];
   if (reply.author !== viewer && !OMH.currentUser.isAdmin) return;
   post.replies.splice(idx, 1);
@@ -3458,10 +3461,35 @@ function deleteDetailComment(btn) {
     if (ai >= 0) post._replyAuthors.splice(ai, 1);
     post.replyCount = post._replyAuthors.length;
   }
-  sb.from('replies').delete().eq('id', reply.id).catch(e => console.error('Delete reply error:', e));
+  if (reply.id) sb.from('replies').delete().eq('id', reply.id).catch(e => console.error('Delete reply error:', e));
   renderDetailComments();
   renderFeed();
   toast('Comment deleted.', 'info', 2000);
+}
+
+// Helper: find reply by id or composite key "author|||timestamp"
+function findReply(post, replyId) {
+  if (!replyId) return null;
+  // Try direct ID match first
+  let r = post.replies.find(r => r.id === replyId);
+  if (r) return r;
+  // Composite key fallback: "author|||timestamp"
+  if (replyId.includes('|||')) {
+    const [author, ts] = replyId.split('|||');
+    r = post.replies.find(r => r.author === author && (r.timestamp||r.created_at||'') === ts);
+  }
+  return r || null;
+}
+
+function findReplyIdx(post, replyId) {
+  if (!replyId) return -1;
+  let idx = post.replies.findIndex(r => r.id === replyId);
+  if (idx >= 0) return idx;
+  if (replyId.includes('|||')) {
+    const [author, ts] = replyId.split('|||');
+    idx = post.replies.findIndex(r => r.author === author && (r.timestamp||r.created_at||'') === ts);
+  }
+  return idx;
 }
 
 function submitDetailReply() {
@@ -4156,20 +4184,19 @@ function renderExploreResults() {
 
   if (trendSec) trendSec.style.display = 'none';
 
-  // ── Energy score with per-tab decay ───────────────────────────────────────
-  // decay formula: score × decay^daysAge (exponential per day)
-  // Trending Now = 0.97/day, 24h window
-  // Top This Week = 0.99/day, 7d window
-  // Top This Month = 0.999/day, 30d window
+  // Decay per WEEK (not per day) — gentler decay for a launching platform
+  // Trending Now = 0.97/week, 24h window
+  // Top This Week = 0.99/week, 7d window
+  // Top This Month = 0.999/week, 30d window
   // All Time = no decay, raw score
   function exploreEnergy(post) {
     const viewer = OMH.currentUser?.username;
-    const raw = energyScore(post, viewer, true); // true = raw score no time decay
-    const daysAge = (Date.now() - new Date(post.timestamp)) / 86400000;
-    if (exploreMode === 'trending') return raw * Math.pow(0.97, daysAge);
-    if (exploreMode === 'week')     return raw * Math.pow(0.99, daysAge);
-    if (exploreMode === 'month')    return raw * Math.pow(0.999, daysAge);
-    return raw; // alltime — no decay
+    const raw    = energyScore(post, viewer, true);
+    const weeksAge = (Date.now() - new Date(post.timestamp)) / (86400000 * 7);
+    if (exploreMode === 'trending') return raw * Math.pow(0.97,  weeksAge);
+    if (exploreMode === 'week')     return raw * Math.pow(0.99,  weeksAge);
+    if (exploreMode === 'month')    return raw * Math.pow(0.999, weeksAge);
+    return raw;
   }
 
   const now = Date.now();
