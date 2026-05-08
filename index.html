@@ -509,7 +509,8 @@ const OMH = {
     const label = post.vote.options[optionIdx]?.label || '';
     post.vote.options.forEach(o => { o.voters = o.voters.filter(v => v !== uid); });
     post.vote.options[optionIdx].voters.push(uid);
-    sb.from('posts').update({ vote: post.vote }).eq('id', postId);
+    sb.from('posts').update({ vote: post.vote }).eq('id', postId)
+      .then(() => { if (window._pollEngagement) window._pollEngagement(); });
     renderFeed();
     if (this.currentPage === 'votes') renderVotesPage();
     toast('Vote cast: ' + label, 'vote-cast', 3000);
@@ -3255,7 +3256,8 @@ function energyScore(post, viewerUsername) {
 function fmtEnergy(s) {
   if (s >= 1000000) return (s/1000000).toFixed(1)+'M';
   if (s >= 1000)    return (s/1000).toFixed(1)+'K';
-  return Math.round(s)+'';
+  if (s >= 10)      return Math.round(s)+'';
+  return s.toFixed(1); // show decimal for low scores
 }
 function energyBadge(post) {
   const s = energyScore(post, OMH.currentUser?.username);
@@ -4894,9 +4896,9 @@ setTimeout(() => {
     if (_polling) return;
     _polling = true;
     try {
-      // Fetch likes + views for all posts in one lightweight query
+      // Fetch likes + views + vote for all posts
       const { data: postRows } = await sb.from('posts')
-        .select('id, likes, views')
+        .select('id, likes, views, vote')
         .neq('removed', true);
 
       let changed = false;
@@ -4905,11 +4907,21 @@ setTimeout(() => {
         postRows.forEach(row => {
           const post = OMH.posts.find(p => p.id === row.id);
           if (!post) return;
-          const newLikes  = row.likes || [];
-          const newViews  = row.views || 0;
-          const likesChanged  = JSON.stringify(post.likes) !== JSON.stringify(newLikes);
-          const viewsChanged  = post.views !== newViews;
-          if (likesChanged || viewsChanged) {
+          const newLikes = row.likes || [];
+          const newViews = row.views || 0;
+          const likesChanged = JSON.stringify(post.likes) !== JSON.stringify(newLikes);
+          const viewsChanged = post.views !== newViews;
+          // Sync vote data so GeoVote participation shows cross-account
+          let voteChanged = false;
+          if (row.vote && post.vote) {
+            const oldVoteStr = JSON.stringify(post.vote.options?.map(o => o.voters));
+            const newVoteStr = JSON.stringify(row.vote.options?.map(o => o.voters));
+            if (oldVoteStr !== newVoteStr) {
+              post.vote = row.vote;
+              voteChanged = true;
+            }
+          }
+          if (likesChanged || viewsChanged || voteChanged) {
             post.likes  = newLikes;
             post.views  = newViews;
             changed = true;
@@ -5092,66 +5104,105 @@ async function doForgotUsername() {
 
       <div id="legal-tos">
         <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:4px;">Terms of Service</div>
-        <div style="font-size:11px;margin-bottom:16px;">Last updated: May 2026</div>
+        <div style="font-size:11px;margin-bottom:16px;">Last updated: May 2026 | Effective immediately upon account creation</div>
 
-        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">1. Acceptance</div>
-        <p style="margin-bottom:14px;">By creating an account on OneMindHub you agree to these Terms. If you do not agree, do not use the platform.</p>
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">1. Acceptance of Terms</div>
+        <p style="margin-bottom:12px;">By creating an account or using OneMind ("the Platform"), you agree to these Terms of Service. If you do not agree, do not use the Platform. These terms form a binding agreement between you and OneMind.</p>
 
-        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">2. Eligibility</div>
-        <p style="margin-bottom:14px;">You must be at least 13 years old. You must provide an accurate location. One account per person — duplicate accounts are prohibited.</p>
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">2. Who Can Use OneMind</div>
+        <p style="margin-bottom:8px;">You must be at least 13 years of age to create an account. By registering you confirm that:</p>
+        <ul style="margin:0 0 12px 18px;"><li style="margin-bottom:4px;">You are at least 13 years old</li><li style="margin-bottom:4px;">You will provide accurate information including your real location</li><li style="margin-bottom:4px;">You will not create more than one account per person</li><li style="margin-bottom:4px;">You will not share your account with others</li></ul>
 
-        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">3. Your Account</div>
-        <p style="margin-bottom:14px;">You are responsible for keeping your credentials secure. Your location is self-declared and may be corroborated by GPS at vote time. Location can only be changed once every 6 months.</p>
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">3. One Account Per Person</div>
+        <p style="margin-bottom:12px;">OneMind is built on the principle of one person, one voice. Creating multiple accounts to manipulate votes, inflate engagement, or misrepresent your location is a violation of these terms and will result in permanent suspension of all associated accounts.</p>
 
-        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">4. Content</div>
-        <p style="margin-bottom:14px;">You own content you post. By posting you grant OneMindHub a licence to display it on the platform. You must not post illegal content, harassment, threats, or content that violates others' rights. Community Court moderation is performed by users, not the platform operator, except for CSAM which is auto-removed.</p>
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">4. Geo-Verification</div>
+        <p style="margin-bottom:12px;">OneMind uses location verification to ensure votes and community content reflect the genuine views of people in a given area. You agree to provide your accurate location at signup. Misrepresenting your location to participate in votes or communities you are not geographically part of is a violation of these terms.</p>
 
-        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">5. Platform Rules</div>
-        <p style="margin-bottom:14px;">No vote manipulation, no automated accounts, no impersonation. GeoVote participation requires verified location eligibility. One person, one vote — always.</p>
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">5. Your Content</div>
+        <p style="margin-bottom:8px;">You retain ownership of content you post on OneMind. By posting you grant OneMind a non-exclusive licence to display and distribute your content on the Platform. You are solely responsible for what you post. You agree not to post content that:</p>
+        <ul style="margin:0 0 12px 18px;"><li style="margin-bottom:4px;">Is illegal under Canadian, US, or applicable local law</li><li style="margin-bottom:4px;">Contains child sexual abuse material (CSAM) — any such content will be reported to authorities immediately</li><li style="margin-bottom:4px;">Constitutes credible threats of violence against specific individuals</li><li style="margin-bottom:4px;">Is part of a fraud or scam operation</li><li style="margin-bottom:4px;">Impersonates another person or organization</li></ul>
+        <p style="margin-bottom:12px;">Beyond these limits, OneMind does not editorially control content. Community moderation is handled through Community Court — a transparent, human-run process where your peers make decisions, not algorithms.</p>
 
-        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">6. Subscriptions & Payments</div>
-        <p style="margin-bottom:14px;">Paid tiers (Premium, Creator Pro, Founder) are processed via Stripe. Founder lifetime access is limited to 1,000 accounts. All sales are final unless required by applicable law.</p>
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">6. Community Court</div>
+        <p style="margin-bottom:12px;">Content disputes on OneMind are resolved through Community Court, a self-moderation system where verified community members vote on flagged content. You agree to accept Community Court decisions regarding your content. OneMind reserves the right to remove content that violates Section 5 without Community Court process in cases of clear illegality.</p>
 
-        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">7. Termination</div>
-        <p style="margin-bottom:14px;">We may suspend or terminate accounts that violate these Terms. You may delete your account at any time in Settings.</p>
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">7. Votes and Civic Features</div>
+        <p style="margin-bottom:12px;">GeoVotes on OneMind are for community expression and civic engagement. You agree not to manipulate votes through coordinated inauthentic behaviour, multiple accounts, or false location claims. Vote results on OneMind represent the genuine expressed views of verified participants and should not be represented as official polling or election results.</p>
 
-        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">8. Limitation of Liability</div>
-        <p style="margin-bottom:14px;">OneMindHub is provided as-is. We are not liable for user-generated content or decisions made based on platform data.</p>
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">8. Creator Monetization</div>
+        <p style="margin-bottom:12px;">Creator monetization features including subscriptions, tipping, and ad revenue sharing are available to users with an active Creator Pro subscription. Payouts are processed according to our current payout schedule with a minimum threshold of $20–25 USD. OneMind reserves the right to withhold payment in cases of fraudulent activity, terms violations, or chargebacks.</p>
 
-        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">9. Governing Law</div>
-        <p style="margin-bottom:14px;">These Terms are governed by the laws of British Columbia, Canada.</p>
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">9. Premium and Paid Features</div>
+        <p style="margin-bottom:12px;">Paid subscriptions including Premium and Creator Pro are billed through Stripe. Founder memberships are lifetime and non-refundable. Monthly and annual subscriptions may be cancelled at any time and will remain active until the end of the billing period. OneMind does not offer refunds for partial billing periods.</p>
 
-        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">10. Contact</div>
-        <p>Questions: support@onemindhub.com</p>
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">10. Account Suspension and Termination</div>
+        <p style="margin-bottom:12px;">OneMind may suspend or terminate accounts that violate these terms, engage in fraud, create multiple accounts, or misrepresent location. We will make reasonable efforts to notify you of account actions. You may appeal account decisions by contacting support.</p>
+
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">11. Limitation of Liability</div>
+        <p style="margin-bottom:12px;">OneMind is provided as-is. We are not liable for content posted by users, interruptions in service, or losses resulting from your use of the Platform. Our total liability to you shall not exceed the amount you paid to OneMind in the 12 months preceding any claim.</p>
+
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">12. Changes to These Terms</div>
+        <p style="margin-bottom:12px;">We may update these terms as the Platform evolves. We will notify you of material changes through the Platform or by email. Continued use after changes constitutes acceptance of updated terms.</p>
+
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">13. Governing Law</div>
+        <p style="margin-bottom:12px;">These terms are governed by the laws of British Columbia, Canada. Disputes shall be resolved in the courts of British Columbia.</p>
+
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">14. Contact</div>
+        <p>For questions about these terms contact us at <strong style="color:var(--text);">support@onemind.com</strong></p>
       </div>
 
       <div id="legal-privacy" style="display:none;">
         <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:4px;">Privacy Policy</div>
-        <div style="font-size:11px;margin-bottom:16px;">Last updated: May 2026</div>
+        <div style="font-size:11px;margin-bottom:16px;">Last updated: May 2026 | Effective immediately upon account creation</div>
+        <p style="margin-bottom:12px;">OneMind is built on a simple principle: your data belongs to you. We collect only what we need to run the Platform and we never sell your personal information to third parties.</p>
 
-        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">What we collect</div>
-        <p style="margin-bottom:14px;">Username, email, password (hashed), full name, location (city, state, country), profile photo, content you post, votes you cast, and engagement activity (likes, comments). GPS coordinates are used only at vote time for eligibility verification and are never stored.</p>
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">1. What We Collect</div>
+        <p style="margin-bottom:8px;"><strong style="color:var(--text);">Account information:</strong> Email address, username, password (encrypted), and phone number for verification purposes.</p>
+        <p style="margin-bottom:8px;"><strong style="color:var(--text);">Location information:</strong> Your city, region, and country as provided at signup. We use this to enable geo-verified voting and community features. We do not collect real-time GPS tracking.</p>
+        <p style="margin-bottom:8px;"><strong style="color:var(--text);">Content:</strong> Posts, votes, comments, and media you upload to the Platform.</p>
+        <p style="margin-bottom:8px;"><strong style="color:var(--text);">Usage data:</strong> Standard platform analytics including pages visited, features used, and engagement with content. This data is aggregated and used to improve the Platform.</p>
+        <p style="margin-bottom:8px;"><strong style="color:var(--text);">Payment information:</strong> Payment processing is handled by Stripe. OneMind does not store your card details.</p>
+        <p style="margin-bottom:12px;"><strong style="color:var(--text);">Device information:</strong> Basic device and browser information collected by Cloudflare for security and fraud prevention purposes.</p>
 
-        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">What we don't collect</div>
-        <p style="margin-bottom:14px;">We do not build behavioural profiles. We do not sell your data. We do not run targeted advertising. We do not store GPS coordinates. We do not share your data with third parties except as required to operate the service (Supabase for database, Cloudflare for video, Stripe for payments).</p>
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">2. What We Do Not Collect</div>
+        <ul style="margin:0 0 12px 18px;"><li style="margin-bottom:4px;">We do not sell your personal data to advertisers or third parties</li><li style="margin-bottom:4px;">We do not collect real-time location tracking or GPS data</li><li style="margin-bottom:4px;">We do not build advertising profiles on individual users</li><li style="margin-bottom:4px;">We do not share your phone number with third parties beyond verification services</li></ul>
 
-        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">How we use your data</div>
-        <p style="margin-bottom:14px;">To operate your account, display your posts, verify geo-eligibility for votes, process payments, and send transactional emails (password reset, username recovery). Your location is displayed publicly on your profile and posts.</p>
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">3. How We Use Your Information</div>
+        <ul style="margin:0 0 12px 18px;"><li style="margin-bottom:4px;">To verify your account and location for geo-voting features</li><li style="margin-bottom:4px;">To process payments and creator payouts</li><li style="margin-bottom:4px;">To send you notifications about activity on your account</li><li style="margin-bottom:4px;">To prevent fraud, spam, and abuse</li><li style="margin-bottom:4px;">To improve the Platform through aggregated analytics</li><li style="margin-bottom:4px;">To comply with legal obligations</li></ul>
 
-        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">Data storage</div>
-        <p style="margin-bottom:14px;">Data is stored on Supabase infrastructure in the United States. By using OneMindHub you consent to this storage.</p>
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">4. Phone Number Verification</div>
+        <p style="margin-bottom:12px;">We collect your phone number to enforce our one person, one account policy and to prevent vote manipulation. Your phone number is verified through Twilio and is not displayed publicly on your profile. We do not use your phone number for marketing purposes.</p>
 
-        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">Your rights</div>
-        <p style="margin-bottom:14px;">You can delete your account and all associated data at any time via Settings → Delete Account. You can request a copy of your data by emailing support@onemindhub.com.</p>
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">5. Location Data</div>
+        <p style="margin-bottom:12px;">Your location is used to enable geo-verified features including GeoVotes and Near Me content. Your precise address is never stored or displayed. Only your city and region level location is used for Platform features.</p>
 
-        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">Cookies</div>
-        <p style="margin-bottom:14px;">We use localStorage to keep you logged in. No third-party tracking cookies.</p>
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">6. Community Treasury and Donations</div>
+        <p style="margin-bottom:12px;">When you contribute to GeoFund campaigns or the Community Treasury, transaction amounts are recorded for payout and transparency reporting. Donor information is kept private and is not displayed publicly without your consent.</p>
 
-        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">Children</div>
-        <p style="margin-bottom:14px;">OneMindHub is not directed at children under 13. If you believe a child has registered please contact us.</p>
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">7. Data Storage and Security</div>
+        <p style="margin-bottom:12px;">Your data is stored securely through Supabase with encryption at rest and in transit. Media files are stored through Backblaze B2 and served via Cloudflare's global network. We implement industry-standard security practices including rate limiting, device fingerprinting, and access controls.</p>
 
-        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">Contact</div>
-        <p>Privacy questions: support@onemindhub.com</p>
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">8. Third Party Services</div>
+        <ul style="margin:0 0 12px 18px;"><li style="margin-bottom:4px;"><strong style="color:var(--text);">Supabase</strong> — database and authentication</li><li style="margin-bottom:4px;"><strong style="color:var(--text);">Stripe</strong> — payment processing</li><li style="margin-bottom:4px;"><strong style="color:var(--text);">Twilio</strong> — phone verification</li><li style="margin-bottom:4px;"><strong style="color:var(--text);">Cloudflare</strong> — content delivery and security</li><li style="margin-bottom:4px;"><strong style="color:var(--text);">Backblaze</strong> — media storage</li></ul>
+
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">9. Your Rights</div>
+        <p style="margin-bottom:8px;">You have the right to access, correct, or delete your personal data, export your content, and withdraw consent for optional data collection. To exercise these rights contact us at support@onemind.com. We will respond within 30 days.</p>
+
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">10. Data Retention</div>
+        <p style="margin-bottom:12px;">We retain your account data for as long as your account is active. When you delete your account we remove your personal information within 30 days. Some data may be retained longer where required by law or for fraud prevention purposes.</p>
+
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">11. Children's Privacy</div>
+        <p style="margin-bottom:12px;">OneMind is not directed at children under 13. We do not knowingly collect personal information from anyone under 13. If we become aware that we have collected information from a child under 13 we will delete it immediately.</p>
+
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">12. Transparency</div>
+        <p style="margin-bottom:12px;">OneMind operates a public Transparency Dashboard showing platform revenue and creator payout data in aggregate. No individual user financial data is displayed publicly without consent.</p>
+
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">13. Applicable Law</div>
+        <p style="margin-bottom:12px;">This policy complies with Canada's Personal Information Protection and Electronic Documents Act (PIPEDA) and applicable provincial privacy legislation. Users in the European Economic Area have additional rights under GDPR. Users in California have additional rights under CCPA.</p>
+
+        <div style="font-weight:700;color:var(--text);margin:20px 0 8px;">14. Contact</div>
+        <p>Privacy questions or data requests: <strong style="color:var(--text);">support@onemind.com</strong></p>
       </div>
     </div>
   </div>
