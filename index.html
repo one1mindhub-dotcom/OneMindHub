@@ -1465,7 +1465,7 @@ document.addEventListener('visibilitychange', async () => {
             <option value="Zimbabwe">Zimbabwe</option>
           </select></div>
       <div><label>State / Province</label><div id="su-state-container"><input class="input-field" id="su-state" type="text" placeholder="State / Province / Region" /></div></div>
-      <div><label>City / Town</label><input class="input-field" id="su-city" type="text" placeholder="Austin" /></div>
+      <div><label>City / Town <span style="color:var(--red);font-size:11px;">*Enter your actual city, not province/state</span></label><input class="input-field" id="su-city" type="text" placeholder="e.g. Vancouver, Toronto, Calgary" /></div>
       <div style="grid-column:1/-1;" class="early-notice">
         📍 <strong style="color:var(--text);">Location lock:</strong> Your location can only be changed once every 6 months. This prevents gaming of geo-restricted votes. Location is self-declared with GPS corroboration at vote time.
       </div>
@@ -1473,7 +1473,7 @@ document.addEventListener('visibilitychange', async () => {
         <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin:0;">
           <input type="checkbox" id="su-terms" style="margin-top:2px;flex-shrink:0;width:16px;height:16px;accent-color:var(--accent);cursor:pointer;" />
           <span style="font-size:12px;color:var(--muted);line-height:1.5;">
-            I agree to the <a href="onemind-legal.html" target="_blank" style="color:var(--accent);text-decoration:none;font-weight:600;">Terms of Service</a> and <a href="onemind-legal.html#privacy" target="_blank" style="color:var(--accent);text-decoration:none;font-weight:600;">Privacy Policy</a>. I confirm I am at least 13 years old and that the location I provide is accurate.
+            I agree to the <a href="#" onclick="showModal('modal-legal');document.getElementById('legal-tab-tos').click();return false;" style="color:var(--accent);text-decoration:none;font-weight:600;">Terms of Service</a> and <a href="#" onclick="showModal('modal-legal');document.getElementById('legal-tab-privacy').click();return false;" style="color:var(--accent);text-decoration:none;font-weight:600;">Privacy Policy</a>. I confirm I am at least 13 years old and that the location I provide is accurate.
           </span>
         </label>
       </div>
@@ -2008,6 +2008,14 @@ async function doSignup() {
 
   if (!name||!username||!email||!pass||!country||!state||!city) {
     toast('All fields are required including location.', 'error'); return;
+  }
+  // City must be at least 2 chars and not just an abbreviation
+  if (city.length < 2) {
+    toast('Please enter your full city or town name.', 'error'); return;
+  }
+  // Warn if city looks like it matches the state/province (common mistake)
+  if (city.toLowerCase() === state.toLowerCase()) {
+    toast('Please enter your city or town, not your province/state.', 'error'); return;
   }
   if (pass.length < 8) { toast('Password must be at least 8 characters.', 'error'); return; }
   if (!/[A-Z]/.test(pass)) { toast('Password needs at least one uppercase letter.', 'error'); return; }
@@ -5072,5 +5080,82 @@ async function doForgotUsername() {
   toast("If that email is registered, we've sent your username to your inbox.", 'success', 7000);
 }
 </script>
+<!-- LEGAL MODAL -->
+<div id="modal-legal" class="overlay" style="display:none;" onclick="closeModalOnOverlay(event,'legal')" data-overlay-close="legal">
+  <div class="modal" style="position:relative;max-width:640px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;">
+    <button data-close="legal" class="modal-close-btn">✕</button>
+    <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:0;flex-shrink:0;">
+      <button id="legal-tab-tos" onclick="document.getElementById('legal-tos').style.display='block';document.getElementById('legal-privacy').style.display='none';this.style.borderBottom='2px solid var(--accent)';this.style.color='var(--text)';document.getElementById('legal-tab-privacy').style.borderBottom='none';document.getElementById('legal-tab-privacy').style.color='var(--muted)';" style="flex:1;padding:14px;border:none;background:none;cursor:pointer;font-family:'Sora',sans-serif;font-size:14px;font-weight:600;color:var(--text);border-bottom:2px solid var(--accent);">Terms of Service</button>
+      <button id="legal-tab-privacy" onclick="document.getElementById('legal-privacy').style.display='block';document.getElementById('legal-tos').style.display='none';this.style.borderBottom='2px solid var(--accent)';this.style.color='var(--text)';document.getElementById('legal-tab-tos').style.borderBottom='none';document.getElementById('legal-tab-tos').style.color='var(--muted)';" style="flex:1;padding:14px;border:none;background:none;cursor:pointer;font-family:'Sora',sans-serif;font-size:14px;font-weight:600;color:var(--muted);">Privacy Policy</button>
+    </div>
+    <div style="overflow-y:auto;padding:20px;flex:1;font-size:13px;color:var(--muted);line-height:1.7;">
+
+      <div id="legal-tos">
+        <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:4px;">Terms of Service</div>
+        <div style="font-size:11px;margin-bottom:16px;">Last updated: May 2026</div>
+
+        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">1. Acceptance</div>
+        <p style="margin-bottom:14px;">By creating an account on OneMindHub you agree to these Terms. If you do not agree, do not use the platform.</p>
+
+        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">2. Eligibility</div>
+        <p style="margin-bottom:14px;">You must be at least 13 years old. You must provide an accurate location. One account per person — duplicate accounts are prohibited.</p>
+
+        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">3. Your Account</div>
+        <p style="margin-bottom:14px;">You are responsible for keeping your credentials secure. Your location is self-declared and may be corroborated by GPS at vote time. Location can only be changed once every 6 months.</p>
+
+        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">4. Content</div>
+        <p style="margin-bottom:14px;">You own content you post. By posting you grant OneMindHub a licence to display it on the platform. You must not post illegal content, harassment, threats, or content that violates others' rights. Community Court moderation is performed by users, not the platform operator, except for CSAM which is auto-removed.</p>
+
+        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">5. Platform Rules</div>
+        <p style="margin-bottom:14px;">No vote manipulation, no automated accounts, no impersonation. GeoVote participation requires verified location eligibility. One person, one vote — always.</p>
+
+        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">6. Subscriptions & Payments</div>
+        <p style="margin-bottom:14px;">Paid tiers (Premium, Creator Pro, Founder) are processed via Stripe. Founder lifetime access is limited to 1,000 accounts. All sales are final unless required by applicable law.</p>
+
+        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">7. Termination</div>
+        <p style="margin-bottom:14px;">We may suspend or terminate accounts that violate these Terms. You may delete your account at any time in Settings.</p>
+
+        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">8. Limitation of Liability</div>
+        <p style="margin-bottom:14px;">OneMindHub is provided as-is. We are not liable for user-generated content or decisions made based on platform data.</p>
+
+        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">9. Governing Law</div>
+        <p style="margin-bottom:14px;">These Terms are governed by the laws of British Columbia, Canada.</p>
+
+        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">10. Contact</div>
+        <p>Questions: support@onemindhub.com</p>
+      </div>
+
+      <div id="legal-privacy" style="display:none;">
+        <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:4px;">Privacy Policy</div>
+        <div style="font-size:11px;margin-bottom:16px;">Last updated: May 2026</div>
+
+        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">What we collect</div>
+        <p style="margin-bottom:14px;">Username, email, password (hashed), full name, location (city, state, country), profile photo, content you post, votes you cast, and engagement activity (likes, comments). GPS coordinates are used only at vote time for eligibility verification and are never stored.</p>
+
+        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">What we don't collect</div>
+        <p style="margin-bottom:14px;">We do not build behavioural profiles. We do not sell your data. We do not run targeted advertising. We do not store GPS coordinates. We do not share your data with third parties except as required to operate the service (Supabase for database, Cloudflare for video, Stripe for payments).</p>
+
+        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">How we use your data</div>
+        <p style="margin-bottom:14px;">To operate your account, display your posts, verify geo-eligibility for votes, process payments, and send transactional emails (password reset, username recovery). Your location is displayed publicly on your profile and posts.</p>
+
+        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">Data storage</div>
+        <p style="margin-bottom:14px;">Data is stored on Supabase infrastructure in the United States. By using OneMindHub you consent to this storage.</p>
+
+        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">Your rights</div>
+        <p style="margin-bottom:14px;">You can delete your account and all associated data at any time via Settings → Delete Account. You can request a copy of your data by emailing support@onemindhub.com.</p>
+
+        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">Cookies</div>
+        <p style="margin-bottom:14px;">We use localStorage to keep you logged in. No third-party tracking cookies.</p>
+
+        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">Children</div>
+        <p style="margin-bottom:14px;">OneMindHub is not directed at children under 13. If you believe a child has registered please contact us.</p>
+
+        <div style="font-weight:700;color:var(--text);margin-bottom:6px;">Contact</div>
+        <p>Privacy questions: support@onemindhub.com</p>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
