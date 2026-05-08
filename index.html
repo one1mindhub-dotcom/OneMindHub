@@ -331,7 +331,7 @@ const OMH = {
       // Fetch reply counts non-blocking — doesn't delay initial render
       const postIds = this.posts.map(p => p.id);
       if (postIds.length) {
-        sb.from('replies').select('post_id, author, author_name, content, created_at').in('post_id', postIds)
+        sb.from('replies').select('id, post_id, author, author_name, content, created_at, likes').in('post_id', postIds)
           .then(({ data: replyCounts }) => {
             if (!replyCounts) return;
             const countMap   = {};
@@ -354,9 +354,11 @@ const OMH = {
                 );
                 if (!exists) {
                   p.replies.push({
+                    id:         r.id,
                     author:     r.author,
                     authorName: r.author_name || r.author,
                     content:    r.content,
+                    likes:      r.likes || [],
                     media:      null,
                     timestamp:  r.created_at
                   });
@@ -1106,11 +1108,14 @@ document.addEventListener('visibilitychange', async () => {
           </div>
         </div>
 
-        <!-- Browse mode toggle -->
-        <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;" id="explore-filter-bar">
+        <!-- Explore energy tabs -->
+        <div style="display:flex;gap:6px;margin-top:14px;flex-wrap:wrap;" id="explore-filter-bar">
           <button onclick="setExploreMode('posts')" id="exp-btn-posts" class="btn-ghost active-filter" style="font-size:12px;padding:5px 14px;">Posts</button>
           <button onclick="setExploreMode('votes')" id="exp-btn-votes" class="btn-ghost" style="font-size:12px;padding:5px 14px;">Votes</button>
-          <button onclick="setExploreMode('trending')" id="exp-btn-trending" class="btn-ghost" style="font-size:12px;padding:5px 14px;">Trending</button>
+          <button onclick="setExploreMode('trending')" id="exp-btn-trending" class="btn-ghost" style="font-size:12px;padding:5px 14px;">🔥 Trending Now</button>
+          <button onclick="setExploreMode('week')" id="exp-btn-week" class="btn-ghost" style="font-size:12px;padding:5px 14px;">Top This Week</button>
+          <button onclick="setExploreMode('month')" id="exp-btn-month" class="btn-ghost" style="font-size:12px;padding:5px 14px;">Top This Month</button>
+          <button onclick="setExploreMode('alltime')" id="exp-btn-alltime" class="btn-ghost" style="font-size:12px;padding:5px 14px;">All Time</button>
         </div>
       </div>
 
@@ -1187,17 +1192,23 @@ document.addEventListener('visibilitychange', async () => {
       <button class="btn-primary" style="width:100%;font-size:13px;" onclick="showModal('premium')">Upgrade — $8/mo</button>
     </div>
     <div style="margin-top:16px;background:var(--card);border:1px solid rgba(245,158,11,.3);border-radius:12px;padding:14px;">
-      <div style="font-size:11px;font-weight:700;color:#f59e0b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">🔥 Community Energy Algorithm</div>
-      <div style="font-size:11px;color:var(--muted);line-height:1.9;">
+      <div style="font-size:11px;font-weight:700;color:#f59e0b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">🔥 How OneMind Works</div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.8;">
+        <div style="font-weight:600;color:var(--text);margin-bottom:4px;">Energy Scoring</div>
         <div style="display:flex;justify-content:space-between;"><span>Card view (3sec+)</span><span style="color:var(--text);font-weight:600;">+1 pt</span></div>
-        <div style="display:flex;justify-content:space-between;"><span>Video 25% watched</span><span style="color:var(--text);font-weight:600;">+2 pts</span></div>
-        <div style="display:flex;justify-content:space-between;"><span>Video 50% watched</span><span style="color:var(--text);font-weight:600;">+3 pts</span></div>
-        <div style="display:flex;justify-content:space-between;"><span>Video 75% watched</span><span style="color:var(--text);font-weight:600;">+4 pts</span></div>
-        <div style="display:flex;justify-content:space-between;"><span>Video 100% watched</span><span style="color:var(--text);font-weight:600;">+5 pts</span></div>
-        <div style="display:flex;justify-content:space-between;"><span>GeoVote cast</span><span style="color:var(--text);font-weight:600;">×10 pts</span></div>
-        <div style="display:flex;justify-content:space-between;"><span>Like / Heart</span><span style="color:var(--text);font-weight:600;">×3 pts</span></div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span>Comments</span><span style="color:var(--text);font-weight:600;">×5 pts</span></div>
-        <div style="border-top:1px solid var(--border);padding-top:7px;font-size:10px;">Score ÷ time<sup>0.8</sup> — No secret ranking. No promoted content.</div>
+        <div style="display:flex;justify-content:space-between;"><span>Video 25%→100%</span><span style="color:var(--text);font-weight:600;">+2→+5 pts</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>Like / Heart</span><span style="color:var(--text);font-weight:600;">+3 pts</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>Comment</span><span style="color:var(--text);font-weight:600;">+5 pts</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>Reply to comment</span><span style="color:var(--text);font-weight:600;">+2 pts</span></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span>GeoVote cast</span><span style="color:var(--text);font-weight:600;">+10 pts</span></div>
+        <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">Comment likes sort threads only — don't add post energy. 1 view/user/24h. No self-engagement.</div>
+        <div style="border-top:1px solid var(--border);padding-top:7px;font-weight:600;color:var(--text);margin-bottom:4px;">Where energy applies</div>
+        <div style="display:flex;justify-content:space-between;"><span>Main Feed / Near Me</span><span style="color:var(--text);font-weight:600;">Chronological</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>Explore → Trending Now</span><span style="color:var(--text);font-weight:600;">24h · 0.97 decay</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>Explore → This Week</span><span style="color:var(--text);font-weight:600;">7d · 0.99 decay</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>Explore → This Month</span><span style="color:var(--text);font-weight:600;">30d · 0.999 decay</span></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span>Explore → All Time</span><span style="color:var(--text);font-weight:600;">Raw score</span></div>
+        <div style="border-top:1px solid var(--border);padding-top:7px;font-size:10px;">No secret ranking. No promoted content. No pay-to-play.</div>
       </div>
     </div>
   </aside>
@@ -1474,7 +1485,7 @@ document.addEventListener('visibilitychange', async () => {
         <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin:0;">
           <input type="checkbox" id="su-terms" style="margin-top:2px;flex-shrink:0;width:16px;height:16px;accent-color:var(--accent);cursor:pointer;" />
           <span style="font-size:12px;color:var(--muted);line-height:1.5;">
-            I agree to the <a href="#" onclick="showModal('modal-legal');document.getElementById('legal-tab-tos').click();return false;" style="color:var(--accent);text-decoration:none;font-weight:600;">Terms of Service</a> and <a href="#" onclick="showModal('modal-legal');document.getElementById('legal-tab-privacy').click();return false;" style="color:var(--accent);text-decoration:none;font-weight:600;">Privacy Policy</a>. I confirm I am at least 13 years old and that the location I provide is accurate.
+            I agree to the <a href="#" onclick="showModal('legal');document.getElementById('legal-tab-tos').click();return false;" style="color:var(--accent);text-decoration:none;font-weight:600;">Terms of Service</a> and <a href="#" onclick="showModal('legal');document.getElementById('legal-tab-privacy').click();return false;" style="color:var(--accent);text-decoration:none;font-weight:600;">Privacy Policy</a>. I confirm I am at least 13 years old and that the location I provide is accurate.
           </span>
         </label>
       </div>
@@ -3074,25 +3085,30 @@ function renderPost(post) {
   }
 
   let repliesHtml = '';
+  // ── Comment thread rendering ──────────────────────────────────────────────
   if (post.replies && post.replies.length > 0) {
-    repliesHtml = `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">` +
-      post.replies.slice(-2).map(r => {
-        const replyUser = OMH.users.find(u => u.username === r.author);
-        const replyAvatar = replyUser?.avatarUrl || replyUser?.avatar;
-        const avatarEl = replyAvatar
-          ? `<img src="${replyAvatar}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
-          : `<div class="avatar" style="width:26px;height:26px;font-size:10px;flex-shrink:0;background:${avatarColor(r.author)};">${initials(r.authorName)}</div>`;
-        return `
-        <div style="display:flex;gap:8px;margin-top:6px;align-items:flex-start;">
-          ${avatarEl}
-          <div style="font-size:12px;line-height:1.4;">
-            <span style="font-weight:600;">${r.authorName || r.author}</span> <span style="color:var(--muted);font-size:11px;">@${r.author}</span>
-            <div style="color:var(--text);margin-top:1px;">${r.content ? r.content.slice(0,100) : ''}${r.content?.length > 100 ? '…' : ''}</div>
-            ${r.media ? `<div style="margin-top:4px;"><img src="${r.media}" style="max-width:180px;max-height:120px;border-radius:8px;object-fit:cover;" onerror="this.style.display='none'"></div>` : ''}
-          </div>
-        </div>`;
-      }).join('') +
-      (post.replies.length > 2 ? `<div style="font-size:11px;color:var(--muted);margin-top:6px;cursor:pointer;" onclick="openReply('${post.id}')">+${post.replies.length-2} more replies</div>` : '') +
+    const viewer = u?.username;
+    const postAuthor = post.author;
+    // Sort: by likes desc (default), fall back to chronological
+    const sortMode = post._commentSort || 'popular';
+    const sorted = post.replies.slice().sort((a, b) => {
+      if (sortMode === 'popular') {
+        const aLikes = (a.likes || []).length;
+        const bLikes = (b.likes || []).length;
+        if (bLikes !== aLikes) return bLikes - aLikes;
+      }
+      return new Date(a.timestamp || a.created_at) - new Date(b.timestamp || b.created_at);
+    });
+    const preview = sorted.slice(0, 2);
+    const more    = sorted.length > 2;
+
+    repliesHtml = `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+        <span style="font-size:11px;font-weight:600;color:var(--muted);">${post.replies.length} comment${post.replies.length!==1?'s':''}</span>
+        <button onclick="toggleCommentSort('${post.id}')" style="font-size:10px;color:var(--muted);background:none;border:1px solid var(--border);border-radius:10px;padding:1px 7px;cursor:pointer;font-family:'Sora',sans-serif;">${sortMode==='popular'?'Popular':'Recent'}</button>
+      </div>` +
+      preview.map(r => renderComment(r, post.id, postAuthor, viewer)).join('') +
+      (more ? `<div style="font-size:11px;color:var(--accent);margin-top:8px;cursor:pointer;font-weight:600;" onclick="openReply('${post.id}')">View all ${post.replies.length} comments →</div>` : '') +
     `</div>`;
   }
 
@@ -3219,17 +3235,11 @@ function renderPost(post) {
 // Comment             = +5pt
 // Time decay: divide by hoursAge^0.8
 // Author's own engagement never counts. Self-view shows others' contributions only.
-function energyScore(post, viewerUsername) {
+function energyScore(post, viewerUsername, rawOnly) {
   const author     = post.author;
   const isSelfView = viewerUsername && viewerUsername === author;
   const likes      = post.likes || [];
-
-  // Likes = 3pts each (exclude author's own)
-  const likeCount = isSelfView
-    ? likes.filter(u => u !== author).length
-    : likes.length;
-
-  // GeoVote participants = 10pts each (unique voters across all options, exclude author)
+  const likeCount  = isSelfView ? likes.filter(u => u !== author).length : likes.length;
   let geoVoteCount = 0;
   if (post.vote && post.vote.options) {
     const allVoters = new Set();
@@ -3237,18 +3247,11 @@ function energyScore(post, viewerUsername) {
     if (isSelfView) allVoters.delete(author);
     geoVoteCount = allVoters.size;
   }
-
-  // Comments = 5pts each (exclude author's own)
-  const replyAuthors = post._replyAuthors ||
-    (post.replies || []).map(r => r.author).filter(Boolean);
-  const commentCount = isSelfView
-    ? replyAuthors.filter(a => a !== author).length
-    : replyAuthors.length;
-
-  // Views already filtered at trackView time (no author, no dupes within 24hrs)
+  const replyAuthors = post._replyAuthors || (post.replies || []).map(r => r.author).filter(Boolean);
+  const commentCount = isSelfView ? replyAuthors.filter(a => a !== author).length : replyAuthors.length;
   const views = post.views || 0;
-
-  const raw    = views + likeCount * 3 + geoVoteCount * 10 + commentCount * 5;
+  const raw   = views + likeCount * 3 + geoVoteCount * 10 + commentCount * 5;
+  if (rawOnly) return raw; // used by Explore tabs which apply their own decay
   const ageMs  = Date.now() - new Date(post.timestamp);
   const ageHrs = Math.max(ageMs / 3600000, 0.1);
   return raw / Math.pow(ageHrs, 0.8);
@@ -3260,10 +3263,139 @@ function fmtEnergy(s) {
   return s.toFixed(1); // show decimal for low scores
 }
 function energyBadge(post) {
-  const s = energyScore(post, OMH.currentUser?.username);
-  if (s < 0.1) return '';
-  return `<span class="energy-badge" title="Community Energy score">🔥 ${fmtEnergy(s)}</span>`;
+  const viewer = OMH.currentUser?.username;
+  const raw = energyScore(post, viewer, true);
+  const s   = energyScore(post, viewer);
+  if (s < 0.1 && raw < 1) return '';
+  const display = s < 0.1 ? '0.1' : fmtEnergy(s);
+  return `<span class="energy-badge" title="🔥 Community Energy: ${Math.round(raw)} raw points ÷ time decay = ${fmtEnergy(s)}&#10;Views×1 · Likes×3 · Comments×5 · GeoVotes×10">🔥 ${display}</span>`;
 }
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Comment system ────────────────────────────────────────────────────────────
+function renderComment(r, postId, postAuthor, viewer) {
+  const replyUser   = OMH.users.find(u => u.username === r.author);
+  const replyAvatar = replyUser?.avatarUrl;
+  const avatarEl    = replyAvatar
+    ? `<img src="${replyAvatar}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+    : `<div class="avatar" style="width:26px;height:26px;font-size:10px;flex-shrink:0;background:${avatarColor(r.author)};">${initials(r.authorName || r.author)}</div>`;
+  const isPostAuthor = r.author === postAuthor;
+  const rLikes       = r.likes || [];
+  const likedByMe    = viewer && rLikes.includes(viewer);
+  const canLike      = viewer && viewer !== r.author; // no self-liking
+  const replyId      = r.id || (r.author + '_' + (r.timestamp||r.created_at||''));
+  return `
+  <div style="display:flex;gap:8px;margin-top:8px;align-items:flex-start;">
+    ${avatarEl}
+    <div style="flex:1;min-width:0;">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <span style="font-weight:600;font-size:12px;">${r.authorName || r.author}</span>
+        <span style="color:var(--muted);font-size:11px;">@${r.author}</span>
+        ${isPostAuthor ? `<span style="background:rgba(79,110,247,.12);color:var(--accent);font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;letter-spacing:.04em;">OP</span>` : ''}
+      </div>
+      <div style="font-size:12px;color:var(--text);margin-top:2px;line-height:1.5;">${r.content ? r.content.slice(0,200) : ''}${r.content?.length > 200 ? '…' : ''}</div>
+      ${r.media ? `<img src="${r.media}" style="margin-top:4px;max-width:160px;border-radius:8px;object-fit:cover;" onerror="this.style.display='none'">` : ''}
+      <div style="display:flex;align-items:center;gap:12px;margin-top:4px;">
+        ${canLike ? `<button onclick="likeComment('${postId}','${replyId}',event)" style="background:none;border:none;cursor:pointer;font-size:11px;color:${likedByMe?'var(--red)':'var(--muted)'};display:flex;align-items:center;gap:3px;padding:0;font-family:'Sora',sans-serif;" title="Like this comment">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="${likedByMe?'currentColor':'none'}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          ${rLikes.length > 0 ? rLikes.length : ''}
+        </button>` : (rLikes.length > 0 ? `<span style="font-size:11px;color:var(--muted);">❤️ ${rLikes.length}</span>` : '')}
+        ${viewer === r.author ? `<button onclick="deleteComment('${postId}','${replyId}',event)" style="background:none;border:none;cursor:pointer;font-size:10px;color:var(--muted);padding:0;font-family:'Sora',sans-serif;opacity:.6;" title="Delete comment">Delete</button>` : ''}
+      </div>
+    </div>
+  </div>`;
+}
+
+function toggleCommentSort(postId) {
+  const post = OMH.posts.find(p => p.id === postId);
+  if (!post) return;
+  post._commentSort = (post._commentSort === 'popular') ? 'recent' : 'popular';
+  renderFeed();
+  if (OMH.currentPage === 'profile') renderProfileContent();
+}
+
+async function likeComment(postId, replyId, evt) {
+  evt && evt.stopPropagation();
+  if (!OMH.currentUser) { showModal('login'); return; }
+  const post = OMH.posts.find(p => p.id === postId);
+  if (!post) return;
+  const viewer = OMH.currentUser.username;
+
+  // Find reply by id or by author+timestamp composite key
+  let reply = post.replies.find(r => r.id === replyId);
+  if (!reply) {
+    // fallback: match by composite key "author_timestamp"
+    const [rAuthor, ...tsParts] = replyId.split('_');
+    const rTs = tsParts.join('_');
+    reply = post.replies.find(r => r.author === rAuthor &&
+      (r.timestamp || r.created_at || '').startsWith(rTs));
+  }
+  if (!reply) return;
+  if (reply.author === viewer) return; // no self-like
+
+  if (!reply.likes) reply.likes = [];
+  const alreadyLiked = reply.likes.includes(viewer);
+  if (alreadyLiked) {
+    reply.likes = reply.likes.filter(u => u !== viewer);
+  } else {
+    reply.likes.push(viewer);
+    // Track comment likes on user profile for Civic Impact Score
+    const authorUser = OMH.users.find(u => u.username === reply.author);
+    if (authorUser) authorUser.commentLikesReceived = (authorUser.commentLikesReceived || 0) + 1;
+    // Update in DB (best-effort)
+    sb.from('users').update({
+      comment_likes_received: (authorUser?.commentLikesReceived || 1)
+    }).eq('username', reply.author).catch(() => {});
+  }
+
+  // Persist reply likes to DB
+  if (reply.id) {
+    sb.from('replies').update({ likes: reply.likes }).eq('id', reply.id).catch(() => {});
+  }
+
+  // Note: comment likes do NOT add to parent post energy score (per spec)
+  renderFeed();
+  if (OMH.currentPage === 'profile') renderProfileContent();
+}
+
+async function deleteComment(postId, replyId, evt) {
+  evt && evt.stopPropagation();
+  if (!OMH.currentUser) return;
+  if (!confirm('Delete this comment?')) return;
+  const post = OMH.posts.find(p => p.id === postId);
+  if (!post) return;
+  const viewer = OMH.currentUser.username;
+
+  // Find reply index
+  let idx = post.replies.findIndex(r => r.id === replyId);
+  if (idx === -1) {
+    const [rAuthor, ...tsParts] = replyId.split('_');
+    const rTs = tsParts.join('_');
+    idx = post.replies.findIndex(r => r.author === rAuthor &&
+      (r.timestamp || r.created_at || '').startsWith(rTs));
+  }
+  if (idx === -1) return;
+  const reply = post.replies[idx];
+  if (reply.author !== viewer && !OMH.currentUser.isAdmin) return;
+
+  // Remove from memory
+  post.replies.splice(idx, 1);
+  if (post._replyAuthors) {
+    const ai = post._replyAuthors.indexOf(reply.author);
+    if (ai >= 0) post._replyAuthors.splice(ai, 1);
+    post.replyCount = post._replyAuthors.length;
+  }
+
+  // Delete from DB
+  if (reply.id) {
+    sb.from('replies').delete().eq('id', reply.id).catch(e => console.error('Delete reply error:', e));
+  }
+
+  renderFeed();
+  if (OMH.currentPage === 'profile') renderProfileContent();
+  toast('Comment deleted.', 'info', 2000);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Feed
@@ -3381,9 +3513,11 @@ function renderNearMe() {
   if (locEl) locEl.innerHTML = `<span class="gps-indicator"><span class="gps-dot"></span>Your area: ${cleanLoc(u.city)}, ${cleanLoc(u.state)}, ${cleanLoc(u.country)}</span>`;
 
   let posts = OMH.posts.filter(p => !p.removed);
-  if (nearmeLevel === 'city') posts = posts.filter(p => p.city.toLowerCase() === u.city.toLowerCase());
-  else if (nearmeLevel === 'state') posts = posts.filter(p => p.state.toLowerCase() === u.state.toLowerCase());
-  else posts = posts.filter(p => p.country.toLowerCase() === u.country.toLowerCase());
+  if (nearmeLevel === 'city') posts = posts.filter(p => p.city && p.city.toLowerCase() === u.city.toLowerCase());
+  else if (nearmeLevel === 'state') posts = posts.filter(p => p.state && p.state.toLowerCase() === u.state.toLowerCase());
+  else posts = posts.filter(p => p.country && p.country.toLowerCase() === u.country.toLowerCase());
+  // Pure chronological — newest first, no energy weighting
+  posts = posts.slice().sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
 
   el.innerHTML = posts.length
     ? posts.map(renderPost).join('')
@@ -3404,6 +3538,16 @@ function renderVotesPage() {
       return diff > 0 && diff < 86400000 * 3;
     });
   }
+  // Sort: active votes by closing soonest first; closed votes by total votes cast
+  const active   = posts.filter(p => new Date(p.vote.closesAt) > new Date())
+                        .sort((a,b) => new Date(a.vote.closesAt) - new Date(b.vote.closesAt));
+  const archived = posts.filter(p => new Date(p.vote.closesAt) <= new Date())
+                        .sort((a,b) => {
+                          const tA = (a.vote.options||[]).reduce((s,o)=>s+o.voters.length,0);
+                          const tB = (b.vote.options||[]).reduce((s,o)=>s+o.voters.length,0);
+                          return tB - tA;
+                        });
+  posts = [...active, ...archived];
   if (posts.length === 0) {
     el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:60px 0;font-size:14px;">No active GeoVotes yet.</div>';
     return;
@@ -3684,9 +3828,9 @@ function renderProfilePage() {
 
 // Explore
 // ── Explore: region browse state ─────────────────────────────────────────────
-let exploreRegions = [];   // active filter zones [{type,value}]
-let exploreMode   = 'posts'; // 'posts' | 'votes' | 'trending'
-let newRegionZones = [];   // zones being built for a new saved region
+let exploreRegions  = [];
+let exploreMode     = 'posts'; // 'posts'|'votes'|'trending'|'week'|'month'|'alltime'
+let newRegionZones  = [];
 
 function renderExplorePage() {
   renderExploreSavedRegions();
@@ -3697,7 +3841,7 @@ function renderExplorePage() {
 
 function setExploreMode(mode) {
   exploreMode = mode;
-  ['posts','votes','trending'].forEach(m => {
+  ['posts','votes','trending','week','month','alltime'].forEach(m => {
     const btn = document.getElementById('exp-btn-' + m);
     if (btn) btn.classList.toggle('active-filter', m === mode);
   });
@@ -3764,27 +3908,73 @@ function renderExploreResults() {
   const trendSec = document.getElementById('explore-trending-section');
   if (!el) return;
 
+  // ── Trending Now tab (hashtag trends, last 24hrs) ──────────────────────────
   if (exploreMode === 'trending') {
     el.innerHTML = '';
     if (trendSec) trendSec.style.display = 'block';
-    // render trending within filtered region
-    const filtered = OMH.posts.filter(p => !p.removed && postMatchesExploreRegions(p));
+    const cutoff24 = Date.now() - 24 * 3600000;
+    const filtered = OMH.posts.filter(p => !p.removed && postMatchesExploreRegions(p) && new Date(p.timestamp) >= cutoff24);
     const tags = {};
     filtered.forEach(p => (p.tags||[]).forEach(t => { tags[t] = (tags[t]||0)+1; }));
     const sorted = Object.entries(tags).sort((a,b)=>b[1]-a[1]).slice(0,12);
     const tl = document.getElementById('trending-list');
-    if (tl) tl.innerHTML = sorted.length ? sorted.map(([tag,count]) =>
-      `<div class="trend-item" onclick="handleSearch('#${tag}')">
-        <div style="font-size:14px;font-weight:600;color:var(--accent);">#${tag}</div>
-        <div style="font-size:12px;color:var(--muted);">${count} post${count!==1?'s':''}</div>
-      </div>`).join('') : '<div style="color:var(--muted);font-size:14px;">No trending topics in this region yet.</div>';
+    if (tl) tl.innerHTML = sorted.length
+      ? sorted.map(([tag,count]) => `<div class="trend-item" onclick="handleSearch('#${tag}')"><div style="font-size:14px;font-weight:600;color:var(--accent);">#${tag}</div><div style="font-size:12px;color:var(--muted);">${count} post${count!==1?'s':''} in last 24h</div></div>`).join('')
+      : '<div style="color:var(--muted);font-size:14px;">No trending topics in the last 24 hours.</div>';
     return;
   }
 
   if (trendSec) trendSec.style.display = 'none';
 
+  // ── Energy score with per-tab decay ───────────────────────────────────────
+  // decay formula: score × decay^daysAge (exponential per day)
+  // Trending Now = 0.97/day, 24h window
+  // Top This Week = 0.99/day, 7d window
+  // Top This Month = 0.999/day, 30d window
+  // All Time = no decay, raw score
+  function exploreEnergy(post) {
+    const viewer = OMH.currentUser?.username;
+    const raw = energyScore(post, viewer, true); // true = raw score no time decay
+    const daysAge = (Date.now() - new Date(post.timestamp)) / 86400000;
+    if (exploreMode === 'trending') return raw * Math.pow(0.97, daysAge);
+    if (exploreMode === 'week')     return raw * Math.pow(0.99, daysAge);
+    if (exploreMode === 'month')    return raw * Math.pow(0.999, daysAge);
+    return raw; // alltime — no decay
+  }
+
+  const now = Date.now();
+  const windows = { trending: 24*3600000, week: 7*86400000, month: 30*86400000, alltime: Infinity };
+  const energyModes = ['trending','week','month','alltime'];
+
   let posts = OMH.posts.filter(p => !p.removed && postMatchesExploreRegions(p));
-  if (exploreMode === 'votes') posts = posts.filter(p => p.vote && new Date(p.vote.closesAt) > new Date());
+
+  // Apply time window for energy tabs
+  if (energyModes.includes(exploreMode) && windows[exploreMode] !== Infinity) {
+    posts = posts.filter(p => (now - new Date(p.timestamp)) <= windows[exploreMode]);
+  }
+
+  // Votes tab: active votes sorted by time remaining
+  if (exploreMode === 'votes') {
+    const active   = posts.filter(p => p.vote && new Date(p.vote.closesAt) > new Date())
+                          .sort((a,b) => new Date(a.vote.closesAt) - new Date(b.vote.closesAt));
+    const archived = posts.filter(p => p.vote && new Date(p.vote.closesAt) <= new Date())
+                          .sort((a,b) => {
+                            const totalA = (a.vote.options||[]).reduce((s,o)=>s+o.voters.length,0);
+                            const totalB = (b.vote.options||[]).reduce((s,o)=>s+o.voters.length,0);
+                            return totalB - totalA;
+                          });
+    posts = [...active, ...archived];
+  }
+
+  // Posts tab: pure chronological (newest first, no energy)
+  if (exploreMode === 'posts') {
+    posts = posts.slice().sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+  }
+
+  // Energy tabs: sort by decayed energy score
+  if (energyModes.includes(exploreMode)) {
+    posts = posts.slice().sort((a,b) => exploreEnergy(b) - exploreEnergy(a));
+  }
 
   if (posts.length === 0) {
     const label = exploreRegions.length ? `in ${exploreRegions.map(r=>r.value||'global').join(', ')}` : '';
@@ -4933,7 +5123,7 @@ setTimeout(() => {
       const postIds = OMH.posts.map(p => p.id);
       if (postIds.length) {
         const { data: replyRows } = await sb.from('replies')
-          .select('post_id, author, author_name, content, created_at')
+          .select('post_id, author, author_name, content, created_at, likes')
           .in('post_id', postIds);
 
         if (replyRows) {
@@ -4960,13 +5150,23 @@ setTimeout(() => {
               );
               if (!exists) {
                 p.replies.push({
+                  id:         r.id,
                   author:     r.author,
                   authorName: r.author_name || r.author,
                   content:    r.content,
+                  likes:      r.likes || [],
                   media:      null,
                   timestamp:  r.created_at
                 });
                 replyAdded = true;
+              } else {
+                // Update likes on existing reply
+                const existing2 = p.replies.find(x => x.author === r.author &&
+                  Math.abs(new Date(x.timestamp||x.created_at) - new Date(r.created_at)) < 10000);
+                if (existing2) {
+                  existing2.id    = existing2.id || r.id;
+                  existing2.likes = r.likes || existing2.likes || [];
+                }
               }
             });
             if (freshAuthors.length !== prevCount || replyAdded) changed = true;
@@ -5097,8 +5297,8 @@ async function doForgotUsername() {
   <div class="modal" style="position:relative;max-width:640px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;">
     <button data-close="legal" class="modal-close-btn">✕</button>
     <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:0;flex-shrink:0;">
-      <button id="legal-tab-tos" onclick="document.getElementById('legal-tos').style.display='block';document.getElementById('legal-privacy').style.display='none';this.style.borderBottom='2px solid var(--accent)';this.style.color='var(--text)';document.getElementById('legal-tab-privacy').style.borderBottom='none';document.getElementById('legal-tab-privacy').style.color='var(--muted)';" style="flex:1;padding:14px;border:none;background:none;cursor:pointer;font-family:'Sora',sans-serif;font-size:14px;font-weight:600;color:var(--text);border-bottom:2px solid var(--accent);">Terms of Service</button>
-      <button id="legal-tab-privacy" onclick="document.getElementById('legal-privacy').style.display='block';document.getElementById('legal-tos').style.display='none';this.style.borderBottom='2px solid var(--accent)';this.style.color='var(--text)';document.getElementById('legal-tab-tos').style.borderBottom='none';document.getElementById('legal-tab-tos').style.color='var(--muted)';" style="flex:1;padding:14px;border:none;background:none;cursor:pointer;font-family:'Sora',sans-serif;font-size:14px;font-weight:600;color:var(--muted);">Privacy Policy</button>
+      <button id="legal-tab-tos" onclick="document.getElementById('legal-tos').style.display='block';document.getElementById('legal-privacy').style.display='none';document.getElementById('legal-tab-tos').style.cssText='flex:1;padding:14px;border:none;background:none;cursor:pointer;font-family:Sora,sans-serif;font-size:14px;font-weight:600;color:var(--text);border-bottom:2px solid var(--accent);';document.getElementById('legal-tab-privacy').style.cssText='flex:1;padding:14px;border:none;background:none;cursor:pointer;font-family:Sora,sans-serif;font-size:14px;font-weight:600;color:var(--muted);';" style="flex:1;padding:14px;border:none;background:none;cursor:pointer;font-family:'Sora',sans-serif;font-size:14px;font-weight:600;color:var(--text);border-bottom:2px solid var(--accent);">Terms of Service</button>
+      <button id="legal-tab-privacy" onclick="document.getElementById('legal-privacy').style.display='block';document.getElementById('legal-tos').style.display='none';document.getElementById('legal-tab-privacy').style.cssText='flex:1;padding:14px;border:none;background:none;cursor:pointer;font-family:Sora,sans-serif;font-size:14px;font-weight:600;color:var(--text);border-bottom:2px solid var(--accent);';document.getElementById('legal-tab-tos').style.cssText='flex:1;padding:14px;border:none;background:none;cursor:pointer;font-family:Sora,sans-serif;font-size:14px;font-weight:600;color:var(--muted);';" style="flex:1;padding:14px;border:none;background:none;cursor:pointer;font-family:'Sora',sans-serif;font-size:14px;font-weight:600;color:var(--muted);">Privacy Policy</button>
     </div>
     <div style="overflow-y:auto;padding:20px;flex:1;font-size:13px;color:var(--muted);line-height:1.7;">
 
